@@ -25,7 +25,7 @@ until docker compose exec -T postgres pg_isready -U lifeos >/dev/null 2>&1; do
 done
 
 echo "-> running database migrations"
-pnpm --filter api migration:run
+pnpm --filter api exec dotenv -e ../../.env -- prisma migrate deploy
 
 echo "-> starting web + api in dev mode"
 pnpm dev
@@ -49,7 +49,7 @@ pnpm quickstart
 ## `.env.example`
 
 ```
-DATABASE_URL=postgres://lifeos:lifeos@localhost:5432/lifeos
+DATABASE_URL=postgres://lifeos:lifeos@localhost:5433/lifeos
 API_PORT=3000
 WEB_PORT=5173
 ```

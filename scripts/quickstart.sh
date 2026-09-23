@@ -19,7 +19,7 @@ until docker compose exec -T postgres pg_isready -U lifeos >/dev/null 2>&1; do
 done
 
 echo "-> running database migrations"
-pnpm --filter api migration:run
+pnpm --filter api exec dotenv -e ../../.env -- prisma migrate deploy
 
 echo "-> starting web + api in dev mode"
 pnpm dev
