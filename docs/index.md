@@ -8,8 +8,9 @@ BFF (backend) · one pnpm workspace · native TypeScript `#` import aliases (no
 alias plugin) · Biome + oxlint for linting/formatting · Docker + a one-command
 quick start.
 
-This is a planning/reference doc set only — no application code has been
-written yet. Each file below is a short, standalone read.
+The app lives in `apps/api` (NestJS + GraphQL + Prisma) and `apps/web`
+(React + Vite). These docs cover the design decisions and setup behind it.
+Each file below is a short, standalone read.
 
 ## Map
 
