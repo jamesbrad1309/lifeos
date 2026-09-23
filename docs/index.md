@@ -23,6 +23,18 @@ Each file below is a short, standalone read.
 - [Knowledge graph](domain/knowledge-graph.md) — how domain entities, use cases, backend, and frontend connect
 - [Habit data model](domain/habit-data-model.md) — modeling "custom habit + arbitrary tracked info"
 
+**Finance** (planned module, not built yet)
+- [Finance module overview](finance/index.md) — scope, build order, reading order
+- [Finance use cases](finance/use-cases.md) — accounts, transactions, budgets, recurring bills, goals, reports
+- [Money handling](finance/money-handling.md) — integer minor units, currency, dates
+- [Finance data model](finance/data-model.md) — Prisma models, derived balances, transfers
+- [Finance backend module](finance/backend-module.md) — Nest module, DTOs, context wiring, DataLoaders
+- [Finance GraphQL schema](finance/graphql-schema.md) — SDL sketch for `graphql/finance/`
+- [Budgets & reports](finance/budgets-and-reports.md) — budget vs actual, spend by category, cash flow
+- [Recurring transactions & CSV import](finance/recurring-and-import.md) — lazy generation, dedupe
+- [Finance frontend](finance/frontend.md) — components, money formatting, Apollo pagination, charts
+- [Habits × finance integration](finance/habits-integration.md) — no-spend days, savings streaks, shared XP
+
 **Frontend**
 - [Frontend stack](frontend/stack.md) — Vite + React + TS baseline
 - [shadcn/ui setup](frontend/shadcn-setup.md) — with native `#` aliases, not `@/*`

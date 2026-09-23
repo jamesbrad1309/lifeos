@@ -69,6 +69,63 @@ improves UX · `2` edge case / power-user · `1` speculative.
 - [ ] **Habit detail page** — Impact 1
   → `Query.habit(id)` exists — no dedicated route/page, everything lives on the dashboard card
 
+## Motivation & rewards
+
+Ideas that give the gamification layer more to do than a single points
+number. None are built yet.
+
+- [ ] **Streak freeze**: spend earned points to protect a streak on a missed day — Impact 3
+  → A `StreakFreeze(habitId, date)` row; `streak.util.ts` treats a frozen day as "not due", like a paused habit
+- [ ] **Achievements / badges** ("First 7-day streak", "100 check-ins", "Perfect week") — Impact 3
+  → Derived from entries at query time, the same way points are; no stored "unlocked" flag is needed until unlocks need a timestamp
+- [ ] **Milestone celebration** when a streak reaches 7 / 30 / 100 days — Impact 2
+  → Frontend only: compare `currentStreak` before and after `upsertHabitEntry`
+- [ ] **Weekly challenge**: a temporary target, e.g. "meditate 5× this week for 2× XP" — Impact 2
+  → `Challenge` entity with a date range and a multiplier fed into `computePoints`
+- [ ] **Reward shop**: trade points for self-defined rewards ("takeaway night = 500 pts") — Impact 2
+  → Needs a spent-points ledger, because points are currently derived and can't be decreased
+
+## Routines & structure
+
+- [ ] **Habit stacking / routines**: group habits into an ordered "Morning routine" and check them off in sequence — Impact 3
+  → `Routine` plus an ordered join table; the day view renders a routine as one block at its first habit's `startTime`
+- [ ] **Negative habits** ("no sugar", "no doomscrolling"): success is the *absence* of an event — Impact 3
+  → A `polarity: "avoid"` flag; a due day counts as successful unless an entry marks a slip
+- [ ] **Habit templates**: start from a preset such as "Drink 2L water" or "Read 20 pages" — Impact 2
+  → A static list on the frontend that pre-fills `CreateHabitForm`; no backend change
+- [ ] **Time-boxed habits / programs**: "30-day push-up challenge" that ends on its own — Impact 2
+  → Optional `endDate` on `Habit`; auto-archive after it passes
+
+## Insights
+
+- [ ] **Best / worst weekday per habit** ("you skip gym on Fridays") — Impact 3
+  → Group entries by `date.getDay()` over the stats window
+- [ ] **Completion-rate trend** (this month vs last month) — Impact 3
+  → Two windowed `computeTotalCompletions` calls divided by due-day counts
+- [ ] **Habit correlations** ("on days you exercise you sleep 40 min more") — Impact 2
+  → Pairwise comparison of entry values across habits on the same dates; needs enough history to mean anything
+- [ ] **Weekly review screen**: a summary each Sunday with wins, misses, and streaks at risk — Impact 3
+  → A `weeklyReview(weekStart)` query that aggregates existing stats
+
+## Journaling & mood
+
+- [ ] **Daily mood / energy check-in** (1–5) — Impact 3
+  → Can be modelled as a built-in habit with `unit: "mood"`, so it reuses entries, heatmaps and streaks with no new tables
+- [ ] **Daily journal note** that isn't tied to a single habit — Impact 2
+  → `JournalEntry(date, body)`; shown in the day view
+- [ ] **Mood overlay on heatmaps**: tint a habit's heatmap by that day's mood — Impact 1
+
+## Cross-module (habits × finance)
+
+These link the habit tracker to the finance module
+([finance/index.md](../finance/index.md)). See
+[finance/habits-integration.md](../finance/habits-integration.md) for the design.
+
+- [ ] **"No-spend day" habit auto-checked from transactions** — Impact 3
+- [ ] **Savings-goal contributions count as check-ins** ("save £10/day") — Impact 3
+- [ ] **Cost of a habit**: link a habit to a spending category ("coffee", "gym") and show spend next to the streak — Impact 2
+- [ ] **Unified "LifeOS level"**: XP from both habits and financial discipline (staying under budget) — Impact 2
+
 ## Explicitly out of scope for v1
 
 - Multi-user auth/accounts — every habit is implicitly single-user for now

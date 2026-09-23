@@ -87,6 +87,17 @@ graph TD
   [use-cases.md](use-cases.md): the backend query (`habitEntries`) exists,
   nothing renders it yet.
 
+## Planned: finance module
+
+The finance module ([finance/index.md](../finance/index.md)) is designed as a
+parallel subgraph: `Account → Transaction ← Category`, `Budget → Category`,
+served by `FinanceModule` services and `graphql/finance/`. The only edges
+into the habits graph are listed in
+[finance/habits-integration.md](../finance/habits-integration.md), and they
+run one way: finance writes `HabitEntry` rows through
+`HabitEntriesService`. The habits code never imports finance. Add finance
+to the diagram once it's built.
+
 Regenerate this diagram (by hand — it's illustrative, not derived from code)
 whenever a use case moves to a different service/component, or a new
 use-case group is added to use-cases.md.
