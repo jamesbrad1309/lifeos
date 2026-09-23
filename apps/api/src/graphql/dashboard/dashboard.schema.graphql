@@ -1,0 +1,22 @@
+"""
+Aggregate gamification stats across all active habits — the top-of-dashboard
+summary (level/XP bar, streak count). Points/level formulas live once on the
+server (habits/gamification.util.ts) so the frontend never re-derives them.
+"""
+type DashboardStats {
+  totalHabits: Int!
+  pausedHabits: Int!
+  totalPoints: Int!
+  level: Int!
+  levelTitle: String!
+  """Points already earned toward the next level."""
+  pointsIntoLevel: Int!
+  """Points needed in total to reach the next level."""
+  pointsForNextLevel: Int!
+  longestOverallStreak: Int!
+  activeStreakCount: Int!
+}
+
+extend type Query {
+  dashboardStats: DashboardStats!
+}

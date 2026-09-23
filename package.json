@@ -1,0 +1,33 @@
+{
+  "name": "lifeos",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "build": "pnpm --filter './apps/*' build",
+    "lint": "oxlint . && biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "quickstart": "bash scripts/quickstart.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "oxlint": "^0.15.0",
+    "typescript": "catalog:"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@apollo/protobufjs",
+      "@biomejs/biome",
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+"""Arbitrary JSON, used for Habit/HabitEntry schedule and metadata fields."""
+scalar JSON
+
+type Query {
+  _root: Boolean
+}
+
+type Mutation {
+  _root: Boolean
+}

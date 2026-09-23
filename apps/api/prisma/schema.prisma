@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Habit {
+  id          String    @id @default(uuid())
+  name        String
+  icon        String?
+  color       String?
+  unit        String?
+  targetValue Float?
+  /// "HH:mm" (24h, local time) — when this habit is meant to happen in the
+  /// day, for the day-calendar view. Null means "anytime today".
+  startTime   String?
+  schedule    Json
+  metadata    Json      @default("{}")
+  archivedAt  DateTime?
+  pausedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  entries HabitEntry[]
+
+  @@map("habits")
+}
+
+model HabitEntry {
+  id        String   @id @default(uuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  value     Float?
+  completed Boolean  @default(false)
+  note      String?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@unique([habitId, date])
+  @@index([habitId])
+  @@map("habit_entries")
+}

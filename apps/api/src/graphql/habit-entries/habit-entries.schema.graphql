@@ -1,0 +1,27 @@
+type HabitEntry {
+  id: ID!
+  habitId: ID!
+  date: String!
+  value: Float
+  completed: Boolean!
+  note: String
+  metadata: JSON!
+  createdAt: String!
+}
+
+input UpsertHabitEntryInput {
+  habitId: ID!
+  date: String!
+  value: Float
+  completed: Boolean
+  note: String
+  metadata: JSON
+}
+
+extend type Query {
+  habitEntries(habitId: ID!): [HabitEntry!]!
+}
+
+extend type Mutation {
+  upsertHabitEntry(input: UpsertHabitEntryInput!): HabitEntry!
+}

@@ -1,0 +1,75 @@
+type Habit {
+  id: ID!
+  name: String!
+  icon: String
+  color: String
+  unit: String
+  targetValue: Float
+  """Time of day as HH:mm (24h, local time) this habit is meant to happen, for the day-calendar view. Null means anytime."""
+  startTime: String
+  schedule: JSON!
+  metadata: JSON!
+  archivedAt: String
+  pausedAt: String
+  paused: Boolean!
+  todayEntry: HabitEntry
+
+  """Consecutive due-days (per schedule) successfully logged, counting back from today."""
+  currentStreak: Int!
+  """Longest run of consecutive successful due-days in the stats window."""
+  longestStreak: Int!
+  """Successful check-ins in the stats window (see STATS_WINDOW_DAYS)."""
+  totalCompletions: Int!
+  """Gamification points — see habits/gamification.util.ts."""
+  points: Int!
+  level: Int!
+  levelTitle: String!
+  """One entry per day in the stats window, oldest first — for a GitHub-style contribution grid."""
+  heatmap: [HeatmapDay!]!
+
+  createdAt: String!
+  updatedAt: String!
+}
+
+type HeatmapDay {
+  date: String!
+  completed: Boolean!
+  value: Float
+}
+
+input CreateHabitInput {
+  name: String!
+  icon: String
+  color: String
+  unit: String
+  targetValue: Float
+  startTime: String
+  schedule: JSON!
+  metadata: JSON
+}
+
+input UpdateHabitInput {
+  name: String
+  icon: String
+  color: String
+  unit: String
+  targetValue: Float
+  startTime: String
+  schedule: JSON
+}
+
+extend type Query {
+  habits: [Habit!]!
+  archivedHabits: [Habit!]!
+  todayHabits: [Habit!]!
+  habit(id: ID!): Habit!
+}
+
+extend type Mutation {
+  createHabit(input: CreateHabitInput!): Habit!
+  updateHabit(id: ID!, input: UpdateHabitInput!): Habit!
+  archiveHabit(id: ID!): Habit!
+  unarchiveHabit(id: ID!): Habit!
+  pauseHabit(id: ID!): Habit!
+  resumeHabit(id: ID!): Habit!
+}
