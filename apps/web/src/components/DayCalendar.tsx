@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Badge } from "#components/ui/badge";
-import { Card, CardContent } from "#components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { Checkbox } from "#components/ui/checkbox";
+import { Progress } from "#components/ui/progress";
 import { DASHBOARD_STATS_QUERY, HABITS_QUERY, UPSERT_HABIT_ENTRY_MUTATION } from "#graphql/habits";
 import type { Habit, HabitsData } from "#graphql/types";
 import { isDueOn, timeToMinutes } from "#lib/schedule";
@@ -52,12 +52,54 @@ function HabitBlock({ habit, top }: { habit: Habit; top: number }) {
   );
 }
 
+function AnytimeRow({ habit }: { habit: Habit }) {
+  const [upsertEntry] = useMutation(UPSERT_HABIT_ENTRY_MUTATION, {
+    refetchQueries: [{ query: HABITS_QUERY }, { query: DASHBOARD_STATS_QUERY }],
+  });
+  const completed = habit.todayEntry?.completed ?? false;
+  const id = `anytime-${habit.id}`;
+
+  return (
+    <li className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/50">
+      <Checkbox
+        id={id}
+        checked={completed}
+        onCheckedChange={(checked) =>
+          upsertEntry({
+            variables: {
+              input: {
+                habitId: habit.id,
+                date: todayIso(),
+                completed: checked === true,
+                value: habit.todayEntry?.value ?? undefined,
+              },
+            },
+          })
+        }
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          "flex-1 cursor-pointer text-sm",
+          completed && "text-muted-foreground line-through",
+        )}
+      >
+        {habit.name}
+      </label>
+      {habit.currentStreak > 0 && (
+        <span className="text-xs text-muted-foreground">🔥 {habit.currentStreak}d</span>
+      )}
+    </li>
+  );
+}
+
 /**
  * A single-day timeline: habits with a `startTime` are placed at their
- * time-of-day offset (see EditHabitDialog for setting it); habits without
- * one show as a chip list above, since they have no natural vertical
- * position. Only habits actually due today (per their schedule) appear —
- * a Mon/Wed/Fri habit doesn't show up on a Tuesday.
+ * time-of-day offset (see EditHabitDialog for setting it) and fill the main
+ * column; habits without one have no natural vertical position, so they sit
+ * in a checklist beside it with today's progress. Only habits actually due
+ * today (per their schedule) appear — a Mon/Wed/Fri habit doesn't show up
+ * on a Tuesday.
  */
 export function DayCalendar() {
   const { data, loading, error } = useQuery<HabitsData>(HABITS_QUERY);
@@ -73,31 +115,26 @@ export function DayCalendar() {
     .filter((habit): habit is Habit & { startTime: string } => habit.startTime != null)
     .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
   const anytime = dueToday.filter((habit) => habit.startTime == null);
+  const done = dueToday.filter((habit) => habit.todayEntry?.completed).length;
+  const pct = dueToday.length > 0 ? Math.round((done / dueToday.length) * 100) : 0;
 
   const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
+  const nowMinutes = today.getHours() * 60 + today.getMinutes();
+  const nowTop = ((nowMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT;
+  const showNow = nowMinutes >= START_HOUR * 60 && nowMinutes <= END_HOUR * 60;
 
   return (
-    <div className="flex flex-col gap-4">
-      {anytime.length > 0 && (
-        <Card>
-          <CardContent className="flex flex-wrap items-center gap-2 pt-6">
-            <span className="text-sm text-muted-foreground">Anytime today:</span>
-            {anytime.map((habit) => (
-              <Badge key={habit.id} variant={habit.todayEntry?.completed ? "success" : "secondary"}>
-                {habit.name}
-              </Badge>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {dueToday.length === 0 && (
-        <p className="text-muted-foreground">Nothing scheduled for today.</p>
-      )}
-
-      {timed.length > 0 && (
-        <Card>
-          <CardContent className="overflow-x-auto pt-6">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <Card className="order-2 lg:order-1">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Schedule</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {timed.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No timed habits today. Give a habit a start time (Edit → Start time) to place it here.
+            </p>
+          ) : (
             <div className="relative" style={{ height: hours.length * HOUR_HEIGHT }}>
               {hours.map((hour, i) => (
                 <div
@@ -105,11 +142,21 @@ export function DayCalendar() {
                   className="absolute inset-x-0 border-t"
                   style={{ top: i * HOUR_HEIGHT }}
                 >
-                  <span className="-translate-y-1/2 absolute left-0 bg-background pr-2 text-xs text-muted-foreground">
+                  <span className="-translate-y-1/2 absolute left-0 bg-card pr-2 text-xs text-muted-foreground">
                     {hour.toString().padStart(2, "0")}:00
                   </span>
                 </div>
               ))}
+
+              {showNow && (
+                <div
+                  aria-hidden
+                  className="absolute right-0 left-14 z-10 border-t-2 border-rose-500"
+                  style={{ top: nowTop }}
+                >
+                  <span className="-top-[5px] -left-1 absolute size-2 rounded-full bg-rose-500" />
+                </div>
+              )}
 
               {timed.map((habit) => {
                 const minutesFromStart = timeToMinutes(habit.startTime) - START_HOUR * 60;
@@ -122,9 +169,46 @@ export function DayCalendar() {
                 );
               })}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="order-1 flex flex-col gap-4 lg:sticky lg:top-0 lg:order-2">
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-4">
+            <p className="text-sm text-muted-foreground">Today's progress</p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {done}
+              <span className="text-base font-normal text-muted-foreground">
+                {" "}
+                / {dueToday.length} done
+              </span>
+            </p>
+            <Progress value={pct} className="h-1.5" />
           </CardContent>
         </Card>
-      )}
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Anytime today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {anytime.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {dueToday.length === 0
+                  ? "Nothing scheduled for today."
+                  : "Everything today has a time."}
+              </p>
+            ) : (
+              <ul className="-mx-2 flex flex-col">
+                {anytime.map((habit) => (
+                  <AnytimeRow key={habit.id} habit={habit} />
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

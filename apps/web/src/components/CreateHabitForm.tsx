@@ -3,8 +3,9 @@ import { type FormEvent, useState } from "react";
 import { Button } from "#components/ui/button";
 import { Input } from "#components/ui/input";
 import { CREATE_HABIT_MUTATION, DASHBOARD_STATS_QUERY, HABITS_QUERY } from "#graphql/habits";
+import { cn } from "#lib/utils";
 
-export function CreateHabitForm() {
+export function CreateHabitForm({ className }: { className?: string }) {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("");
   const [createHabit, { loading }] = useMutation(CREATE_HABIT_MUTATION, {
@@ -29,7 +30,7 @@ export function CreateHabitForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className={cn("flex gap-2", className)}>
       <Input
         placeholder="New habit (e.g. Read)"
         value={name}
@@ -40,10 +41,10 @@ export function CreateHabitForm() {
         placeholder="unit (optional)"
         value={unit}
         onChange={(e) => setUnit(e.target.value)}
-        className="w-40"
+        className="w-32"
       />
       <Button type="submit" disabled={loading || !name.trim()}>
-        Add
+        Add habit
       </Button>
     </form>
   );
