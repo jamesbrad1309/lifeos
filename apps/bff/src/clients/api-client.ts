@@ -2,7 +2,7 @@ import { GraphQLError } from "graphql";
 import type { Logger } from "pino";
 import { env } from "#common/config/env";
 
-type Method = "GET" | "POST" | "PATCH" | "PUT";
+type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 /** Nest's default error body: `{ statusCode, message, error }`, plus `issues` from ZodValidationPipe. */
 interface ApiErrorBody {
@@ -39,6 +39,10 @@ export class ApiClient {
 
   put<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("PUT", path, body);
+  }
+
+  delete<T>(path: string): Promise<T> {
+    return this.request<T>("DELETE", path);
   }
 
   private async request<T>(method: Method, path: string, body?: unknown): Promise<T> {

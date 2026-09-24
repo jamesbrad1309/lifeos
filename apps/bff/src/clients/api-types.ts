@@ -54,3 +54,31 @@ export interface ApiDashboardStats {
   longestOverallStreak: number;
   activeStreakCount: number;
 }
+
+export type ApiJournalEntryKind = "ACTION" | "FEELING" | "EVENT";
+
+export interface ApiJournalEntry {
+  id: string;
+  date: string;
+  kind: ApiJournalEntryKind;
+  time: string | null;
+  text: string;
+  tags: string[];
+  durationMinutes: number | null;
+  emotion: string | null;
+  intensity: number | null;
+  tone: "POSITIVE" | "NEUTRAL" | "NEGATIVE" | null;
+  triggerId: string | null;
+  /** Just enough of the triggering EVENT to render "because of …". */
+  trigger: { id: string; kind: ApiJournalEntryKind; text: string; time: string | null } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiJournalDaySummary {
+  date: string;
+  actionCount: number;
+  feelingCount: number;
+  eventCount: number;
+  emotions: string[];
+}

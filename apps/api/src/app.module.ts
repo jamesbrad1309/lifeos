@@ -5,6 +5,7 @@ import { DatabaseModule } from "#common/database/database.module";
 import { HealthController } from "#common/health/health.controller";
 import { HabitEntriesModule } from "#habit-entries/habit-entries.module";
 import { HabitsModule } from "#habits/habits.module";
+import { JournalModule } from "#journal/journal.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { HabitsModule } from "#habits/habits.module";
     DatabaseModule,
     HabitsModule,
     HabitEntriesModule,
+    JournalModule,
   ],
   controllers: [HealthController],
 })

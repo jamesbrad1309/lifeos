@@ -11,6 +11,10 @@
       "types": "./src/habit-entries/*.ts",
       "default": "./dist/habit-entries/*.js"
     },
+    "#journal/*": {
+      "types": "./src/journal/*.ts",
+      "default": "./dist/journal/*.js"
+    },
     "#common/*": {
       "types": "./src/common/*.ts",
       "default": "./dist/common/*.js"

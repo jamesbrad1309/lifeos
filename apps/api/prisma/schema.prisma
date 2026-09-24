@@ -44,3 +44,46 @@ model HabitEntry {
   @@index([habitId])
   @@map("habit_entries")
 }
+
+enum JournalEntryKind {
+  ACTION
+  FEELING
+  EVENT
+}
+
+enum JournalTone {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+/// One item in a day's journal: something the user did (ACTION), felt
+/// (FEELING) or that happened to them (EVENT). Kind-specific columns are
+/// null for the other kinds — see journal/dto/journal-entry.dto.ts.
+model JournalEntry {
+  id              String           @id @default(uuid())
+  date            DateTime         @db.Date
+  kind            JournalEntryKind
+  /// "HH:mm" (24h, local time) it happened; null means "sometime that day".
+  time            String?
+  text            String           @default("")
+  /// #tags parsed out of `text`, lowercased, for filtering.
+  tags            String[]         @default([])
+  /// ACTION only.
+  durationMinutes Int?
+  /// FEELING only — an emotion word from the frontend's emotion list.
+  emotion         String?
+  /// FEELING only — 1 (faint) to 5 (overwhelming).
+  intensity       Int?
+  /// EVENT only.
+  tone            JournalTone?
+  /// The EVENT that prompted this feeling or action ("because of …").
+  triggerId       String?
+  trigger         JournalEntry?    @relation("JournalTrigger", fields: [triggerId], references: [id], onDelete: SetNull)
+  triggered       JournalEntry[]   @relation("JournalTrigger")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([date])
+  @@map("journal_entries")
+}

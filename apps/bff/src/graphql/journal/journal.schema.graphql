@@ -1,0 +1,104 @@
+"""What a journal entry records: something you did, felt, or that happened to you."""
+enum JournalEntryKind {
+  ACTION
+  FEELING
+  EVENT
+}
+
+"""How an EVENT landed."""
+enum JournalTone {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+type JournalEntry {
+  id: ID!
+  """YYYY-MM-DD"""
+  date: String!
+  kind: JournalEntryKind!
+  """HH:mm (24h, local time), or null for "sometime that day"."""
+  time: String
+  text: String!
+  """#tags parsed out of text, lowercased."""
+  tags: [String!]!
+  """ACTION only."""
+  durationMinutes: Int
+  """FEELING only — an emotion word such as "anxious" or "grateful"."""
+  emotion: String
+  """FEELING only — 1 (faint) to 5 (overwhelming)."""
+  intensity: Int
+  """EVENT only."""
+  tone: JournalTone
+  """The EVENT that prompted this feeling or action."""
+  trigger: JournalTrigger
+  createdAt: String!
+  updatedAt: String!
+}
+
+"""A trimmed JournalEntry — just enough to render "because of …"."""
+type JournalTrigger {
+  id: ID!
+  kind: JournalEntryKind!
+  text: String!
+  time: String
+}
+
+"""Per-day totals for the journal's week strip."""
+type JournalDay {
+  date: String!
+  actionCount: Int!
+  feelingCount: Int!
+  eventCount: Int!
+  """Emotions logged that day, in time order."""
+  emotions: [String!]!
+}
+
+"""
+Create and update take the whole entry. Which fields are required depends
+on `kind`: ACTION and EVENT need `text`, FEELING needs `emotion`.
+"""
+input JournalEntryInput {
+  date: String!
+  kind: JournalEntryKind!
+  time: String
+  text: String
+  durationMinutes: Int
+  emotion: String
+  intensity: Int
+  tone: JournalTone
+  triggerId: ID
+}
+
+"""
+One item of a list written in the composer. `triggerIndex` links an ACTION
+or FEELING to an EVENT earlier in the same list (by position), because that
+event has no id yet.
+"""
+input JournalEntryDraftInput {
+  date: String!
+  kind: JournalEntryKind!
+  time: String
+  text: String
+  durationMinutes: Int
+  emotion: String
+  intensity: Int
+  tone: JournalTone
+  triggerId: ID
+  triggerIndex: Int
+}
+
+extend type Query {
+  journalEntries(date: String!): [JournalEntry!]!
+  """At most 62 days per call."""
+  journalDays(from: String!, to: String!): [JournalDay!]!
+}
+
+extend type Mutation {
+  createJournalEntry(input: JournalEntryInput!): JournalEntry!
+  """Saves a whole list atomically — all entries or none."""
+  createJournalEntries(entries: [JournalEntryDraftInput!]!): [JournalEntry!]!
+  updateJournalEntry(id: ID!, input: JournalEntryInput!): JournalEntry!
+  """Returns the deleted entry's id."""
+  deleteJournalEntry(id: ID!): ID!
+}
