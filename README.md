@@ -2,10 +2,13 @@
 
 A habit tracker for **custom habits**: each one gets its own schedule, unit,
 target and start time. You check habits off (or log a value) each day and
-track streaks over time.
+track streaks over time. A **journal** records what you did, felt, and what
+happened each day, written as a quick `/action` `/feeling` `/event` list.
 
 - **Web:** React 19, TypeScript, Vite, Tailwind, shadcn/ui, Apollo Client (`apps/web`)
-- **API:** NestJS hosting an Apollo GraphQL BFF, Prisma, PostgreSQL, pino logging (`apps/api`)
+- **BFF:** Express + Apollo Server GraphQL, the only backend the browser talks to (`apps/bff`)
+- **API:** NestJS REST service with the domain logic, Prisma, PostgreSQL (`apps/api`)
+- **Gateway:** nginx in Docker, a single entry point that routes `/graphql` to the BFF and everything else to the web app
 - **Tooling:** pnpm workspace, native TypeScript `#` import aliases, Biome + oxlint, Docker
 
 ## Quick start
@@ -22,17 +25,19 @@ This one command:
 2. installs dependencies
 3. starts Postgres in Docker
 4. runs the migrations
-5. starts the web app and the API in watch mode
+5. starts the web app, the BFF and the API in watch mode
 
 When it's running:
 
-| Service  | URL                             |
-| -------- | ------------------------------- |
-| Web      | http://localhost:5173           |
-| GraphQL  | http://localhost:3000/graphql   |
-| Postgres | `localhost:5433` (lifeos/lifeos) |
+| Service       | URL                              |
+| ------------- | -------------------------------- |
+| Web           | http://localhost:5173            |
+| GraphQL (BFF) | http://localhost:4000/graphql    |
+| REST API      | http://localhost:3000 (internal; the BFF calls it) |
+| Postgres      | `localhost:5433` (lifeos/lifeos) |
 
-In development, Vite proxies `/graphql` to the API.
+In development, Vite proxies `/graphql` to the BFF. To run the dev server
+against the Docker stack instead: `BFF_URL=http://localhost:8080 pnpm dev:web`.
 
 ### Run everything in Docker
 
@@ -40,9 +45,10 @@ In development, Vite proxies `/graphql` to the API.
 docker compose up --build
 ```
 
-This serves the web app at http://localhost:8080 and the API at
-http://localhost:3000. You don't need Node installed, but there's no hot
-reload.
+Everything is served through the gateway at http://localhost:8080 (the app
+at `/`, GraphQL at `/graphql`). The API and BFF aren't published to the
+host. You don't need Node installed, but there's no hot reload. Keep the
+`--build`: without it Compose reuses old images and your changes won't show.
 
 ## Scripts
 
@@ -50,10 +56,11 @@ Run from the repo root:
 
 | Command         | What it does                         |
 | --------------- | ------------------------------------ |
-| `pnpm dev`      | Web + API in watch mode              |
+| `pnpm dev`      | Web + BFF + API in watch mode        |
 | `pnpm dev:web`  | Web only                             |
+| `pnpm dev:bff`  | BFF only                             |
 | `pnpm dev:api`  | API only                             |
-| `pnpm build`    | Build both apps                      |
+| `pnpm build`    | Build all apps                       |
 | `pnpm lint`     | oxlint + Biome lint                  |
 | `pnpm format`   | Biome format (writes changes)        |
 | `pnpm check`    | Biome lint + format (writes changes) |
@@ -73,7 +80,10 @@ pnpm --filter api prisma:studio    # browse the database
 | -------------- | --------------------------------------------------- |
 | `DATABASE_URL` | `postgres://lifeos:lifeos@localhost:5433/lifeos`    |
 | `API_PORT`     | `3000`                                              |
+| `BFF_PORT`     | `4000`                                              |
+| `API_URL`      | `http://localhost:3000` (where the BFF finds the API) |
 | `WEB_PORT`     | `5173`                                              |
+| `BFF_URL`      | `http://localhost:4000` (where Vite's dev proxy sends `/graphql`; set it in the shell, e.g. `BFF_URL=http://localhost:8080 pnpm dev:web`) |
 | `NODE_ENV`     | `development`                                       |
 | `LOG_LEVEL`    | `debug` in dev, `info` in prod                      |
 
@@ -81,9 +91,10 @@ pnpm --filter api prisma:studio    # browse the database
 
 ```
 apps/
-  api/        NestJS + GraphQL + Prisma (schema in prisma/schema.prisma)
+  api/        NestJS REST API + Prisma (schema in prisma/schema.prisma)
+  bff/        GraphQL BFF: Express + Apollo, calls the API over REST
   web/        React + Vite frontend
-docker/       Dockerfiles and nginx config
+docker/       Dockerfiles, gateway and web nginx configs
 docs/         Architecture and design notes
 scripts/      quickstart.sh
 ```

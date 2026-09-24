@@ -27,7 +27,7 @@ build it on the existing stack without new infrastructure:
 5. [Money handling](money-handling.md): integer minor units, currency, dates (read before touching any amounts)
 6. [Data model](data-model.md): Prisma models and why balances are derived
 7. [Backend module](backend-module.md): Nest module, services, DTOs, context wiring
-8. [GraphQL schema](graphql-schema.md): SDL for `graphql/finance/`
+8. [GraphQL schema](graphql-schema.md): SDL for the BFF's `graphql/finance/`
 9. [Budgets & reports](budgets-and-reports.md): monthly budgets, spend by category, cash flow
 10. [Recurring transactions & CSV import](recurring-and-import.md): getting data in without typing every row
 11. [Frontend](frontend.md): screens, components, Apollo queries, formatting money

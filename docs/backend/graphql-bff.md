@@ -1,120 +1,123 @@
-# GraphQL BFF Layer: Colocated Schema on a Small Express/Apollo Server
+# GraphQL BFF (`apps/bff`)
 
-## Why not `@nestjs/graphql`
+A small **Express 5 + Apollo Server 4** service that serves the frontend's
+GraphQL API. It contains **no business logic and has no database access**:
+every resolver calls the internal REST API (`apps/api`) over HTTP. See
+[overview.md](../architecture/overview.md) for where it sits.
 
-`@nestjs/graphql`'s code-first mode generates the schema from decorated
-TypeScript classes (`@ObjectType()`, `@Field()`, `@Resolver()`), spread across
-files the framework wires together via its module system. That's a
-reasonable default, but this project instead wants:
+## Layout
 
-- **Schema colocation**: a feature's SDL (`.graphql` file) sits next to its
-  resolver file, both readable together, instead of the schema being an
-  emergent side-effect of decorators scattered across classes.
-- **A minimal GraphQL runtime**: `@apollo/server` mounted as Express
-  middleware is a few lines, with no Nest-specific GraphQL abstraction to
-  learn on top of plain Apollo Server concepts (useful if this ever needs to
-  swap in `graphql-yoga` or move the GraphQL layer out of Nest entirely).
-
-Nest is still the host process (bootstrap, DI, config) — see
-[nestjs-structure.md](nestjs-structure.md). Only the GraphQL wiring itself
-skips Nest's GraphQL module.
-
-## Packages
-
-```bash
-pnpm --filter api add @apollo/server graphql @graphql-tools/schema @graphql-tools/merge
+```
+apps/bff/
+├── scripts/copy-graphql-assets.mjs   # tsc doesn't copy .graphql files into dist/
+└── src/
+    ├── main.ts                       # Express app: access log, /health, Apollo at /graphql, graceful shutdown
+    ├── common/
+    │   ├── config/env.ts             # zod-validated env: BFF_PORT, API_URL, API_TIMEOUT_MS
+    │   └── logger/logger.ts          # pino + pino-http (request id from x-request-id)
+    ├── clients/
+    │   ├── api-client.ts             # fetch wrapper: forwards request id, logs calls, maps errors
+    │   └── api-types.ts              # JSON shapes of the API's responses (the network contract)
+    └── graphql/
+        ├── schema.ts                 # globs *.graphql + *.resolvers.js into one executable schema
+        ├── context.ts                # per request: logger, ApiClient, DataLoaders
+        ├── loaders.ts                # habitStats + todayEntry batch loaders
+        ├── logging.plugin.ts         # one log line per GraphQL operation
+        ├── root.schema.graphql / root.resolvers.ts   # Query/Mutation roots + JSON scalar
+        ├── habits/                   # habits.schema.graphql + habits.resolvers.ts
+        ├── habit-entries/
+        ├── dashboard/
+        └── journal/                  # journal entries + week summary, see domain/journal.md
 ```
 
-- `@apollo/server` — the GraphQL server itself (v4/v5; framework-agnostic).
-- `graphql` — peer dependency, the reference GraphQL.js implementation.
-- `@graphql-tools/schema` — `makeExecutableSchema` to turn merged SDL +
-  resolvers into one executable schema.
-- `@graphql-tools/merge` — merges an array of colocated typeDefs/resolvers
-  into one before calling `makeExecutableSchema`.
+A feature's SDL and resolvers live in the same folder. `schema.ts` globs
+`**/*.graphql` and `**/*.resolvers.js`, so a new `graphql/<feature>/` folder
+is picked up without editing a central registry.
 
-## Colocated feature schema example
-
-```graphql
-# apps/api/src/graphql/habits/habits.schema.graphql
-type Habit {
-  id: ID!
-  name: String!
-  unit: String
-  targetValue: Float
-  schedule: HabitSchedule!
-  todayEntry: HabitEntry
-}
-
-type Query {
-  habits: [Habit!]!
-  todayHabits: [Habit!]!
-}
-
-input CreateHabitInput {
-  name: String!
-  unit: String
-  targetValue: Float
-  schedule: HabitScheduleInput!
-}
-
-type Mutation {
-  createHabit(input: CreateHabitInput!): Habit!
-}
-```
+## Resolvers only map GraphQL to REST
 
 ```ts
-// apps/api/src/graphql/habits/habits.resolvers.ts
-import type { GraphQLContext } from "../context";
-
-export const habitsResolvers = {
-  Query: {
-    habits: (_: unknown, __: unknown, ctx: GraphQLContext) =>
-      ctx.habitsService.findAll(ctx.userId),
-    todayHabits: (_: unknown, __: unknown, ctx: GraphQLContext) =>
-      ctx.habitsService.findDueToday(ctx.userId),
-  },
-  Mutation: {
-    createHabit: (_: unknown, args: { input: CreateHabitInput }, ctx: GraphQLContext) =>
-      ctx.habitsService.create(ctx.userId, args.input),
-  },
-  Habit: {
-    // field resolver: fetches today's entry lazily per habit, not eagerly for every query
-    todayEntry: (habit: Habit, _: unknown, ctx: GraphQLContext) =>
-      ctx.habitEntriesLoader.load(habit.id),
-  },
-};
+// graphql/habits/habits.resolvers.ts (excerpt)
+Query: {
+  habits: (_, __, ctx) => ctx.api.get<ApiHabit[]>("/habits"),
+},
+Mutation: {
+  createHabit: (_, args, ctx) => ctx.api.post<ApiHabit>("/habits", args.input),
+},
+Habit: {
+  todayEntry: (habit, _, ctx) => ctx.loaders.todayEntry.load(habit.id),
+  currentStreak: async (habit, _, ctx) => (await ctx.loaders.habitStats.load(habit.id)).currentStreak,
+},
 ```
 
-## Merging colocated schemas into one executable schema
+Input validation (zod), streak and points formulas, and date handling all
+live in the API. If a resolver starts making decisions, that logic belongs
+in an API service instead.
 
-```ts
-// apps/api/src/graphql/schema.ts
-import { loadFilesSync } from "@graphql-tools/load-files";
-import { mergeTypeDefs, mergeResolvers } from "@graphql-tools/merge";
-import { makeExecutableSchema } from "@graphql-tools/schema";
+## N+1 over HTTP: DataLoaders
 
-const typeDefs = mergeTypeDefs(loadFilesSync(`${__dirname}/**/*.schema.graphql`));
-const resolvers = mergeResolvers(loadFilesSync(`${__dirname}/**/*.resolvers.{ts,js}`));
+A habit list with 20 habits resolves `todayEntry` 20 times and each stats
+field 20 times. Without batching that's 100+ HTTP calls. `graphql/loaders.ts`
+creates two loaders **per request** (in `buildContext`, never shared across
+requests, or the cache would leak):
 
-export const executableSchema = makeExecutableSchema({ typeDefs, resolvers });
-```
+| Loader | Batched REST call |
+| ------ | ----------------- |
+| `habitStats` | `GET /habits/stats?ids=a,b,c` → streaks, points, level, heatmap per habit |
+| `todayEntry` | `GET /habit-entries/by-date/YYYY-MM-DD?habitIds=a,b,c` |
 
-`loadFilesSync` with a glob scoped to `graphql/**` means adding
-`graphql/streaks/streaks.schema.graphql` + `graphql/streaks/streaks.resolvers.ts`
-is picked up automatically — no central registry file to edit per feature,
-and the glob never reaches into the plain Nest module folders (`habits/`,
-`habit-entries/`) sitting next to `graphql/`.
+All stats fields share one `habitStats` load, so asking for `currentStreak`,
+`points` and `heatmap` still costs one call. A full dashboard query is
+**3 API calls**, whatever the number of habits.
 
-## N+1 avoidance
+## The API client
 
-Field resolvers (like `Habit.todayEntry` above) run once per parent object,
-so a naive per-habit DB query becomes N+1 queries for a habit list. Use
-`dataloader` (batches + caches per-request) for any field resolver that
-fetches related data — construct one `HabitEntriesLoader` per request inside
-`buildContext`, not as a singleton, so caching doesn't leak across users.
+`clients/api-client.ts` is created once per request with that request's
+logger and id. For every call it:
+
+- forwards **`x-request-id`**, so the API's access log uses the same id
+- applies a timeout (`API_TIMEOUT_MS`, default 10s), so a hung API call
+  can't hang the GraphQL request
+- logs `method`, `path`, `status` and `durationMs` (`debug` on success,
+  `warn` on 4xx, `error` on 5xx or connection failure)
+- converts failures into GraphQL errors with a stable `extensions.code`:
+
+| API response | GraphQL `extensions.code` | Message to client |
+| ------------ | ------------------------- | ----------------- |
+| 400 (zod validation) | `BAD_USER_INPUT` (+ `issues`: field paths and messages) | the API's message |
+| 404 | `NOT_FOUND` | the API's message |
+| 5xx / unexpected | `UPSTREAM_ERROR` | "Upstream API error" (internal details stay in logs) |
+| connection refused / timeout | `UPSTREAM_UNAVAILABLE` | "The API is unavailable" |
+
+## The API contract
+
+`clients/api-types.ts` declares the JSON the BFF expects from each endpoint.
+It's deliberately **not** imported from `apps/api`, because the BFF must not
+depend on the API's Prisma types or build output. The REST endpoints are
+listed in [nestjs-structure.md](nestjs-structure.md#rest-endpoints-consumed-by-the-bff).
+If the API's response shape changes, update `api-types.ts` in the same PR.
+
+## Running it
+
+| Command | What it does |
+| ------- | ------------ |
+| `pnpm dev` (root) | Web, BFF and API together |
+| `pnpm dev:bff` | BFF only, with watch mode |
+| `pnpm --filter bff build` | `tsc` + copy `.graphql` files into `dist/` |
+
+Environment (from the root `.env` in dev, from `docker-compose.yml` in Docker):
+
+| Variable | Default | |
+| -------- | ------- | - |
+| `BFF_PORT` | `4000` | |
+| `API_URL` | `http://localhost:3000` | `http://api:3000` in Docker |
+| `API_TIMEOUT_MS` | `10000` | Per API call |
+| `LOG_LEVEL` | `debug` in dev, `info` in prod | Set it to `debug` to see every API call |
+
+Introspection is enabled outside production only.
 
 ## Frontend contract
 
-Run `graphql-codegen` against `apps/api`'s merged schema (introspection or a
-generated `.graphql` SDL file) to produce typed hooks for `apps/web` — see
-[frontend/stack.md](../frontend/stack.md#graphql-client).
+The client-facing schema is unchanged from when GraphQL lived in the API,
+so `apps/web` needed no changes. Codegen for typed hooks should point at
+`apps/bff`'s merged schema. See [frontend/stack.md](../frontend/stack.md#graphql-client).

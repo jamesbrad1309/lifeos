@@ -1,7 +1,21 @@
 # Docker Setup
 
-Two multi-stage Dockerfiles (one per app) plus `docker-compose.yml` for
-local/dev orchestration (Postgres + both apps).
+Three multi-stage Dockerfiles (api, bff, web), an nginx **gateway**, and
+`docker-compose.yml` to run everything:
+
+```
+browser → :8080 gateway ─┬─ /graphql → bff:4000 → api:3000 → postgres:5432
+                         └─ /*       → web:80 (static SPA)
+```
+
+```bash
+docker compose up --build        # then open http://localhost:8080
+```
+
+Only the **gateway** (`:8080`) and **Postgres** (`:5433`, for local tools
+like Prisma Studio) are published to the host. `api` and `bff` use `expose`,
+not `ports`, so they're reachable only on the internal Compose network. The
+browser can't bypass the BFF, and nothing outside Docker can call the API.
 
 ## Why multi-stage + pruning matters in a pnpm monorepo
 
@@ -33,6 +47,7 @@ FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/api/prisma apps/api/prisma
+COPY apps/bff/package.json apps/bff/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
 
@@ -54,79 +69,83 @@ FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=build /repo/pruned ./
 EXPOSE 3000
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+RUN ./node_modules/.bin/prisma generate
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && exec node dist/main.js"]
 ```
 
-`docker/web.Dockerfile` follows the same deps → build shape, but its runtime
-stage serves the static Vite build output instead of running Node:
+`exec` makes Node replace the shell as PID 1, so `docker compose stop`'s
+SIGTERM reaches the app instead of being swallowed by `sh`. The app also has
+to *handle* it (`app.enableShutdownHooks()` in the API, a SIGTERM handler in
+the BFF), because PID 1 gets no default signal handling. Otherwise Docker
+waits 10 s and SIGKILLs the container, which shows up as exit code **137**.
 
-```dockerfile
-FROM base AS deps
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/api/prisma apps/api/prisma
-COPY apps/web/package.json apps/web/package.json
-RUN pnpm install --frozen-lockfile
+`docker/bff.Dockerfile` has the same deps → build → prune shape. Its runtime
+stage is plain `node:22-slim` **without OpenSSL or Prisma**, because the BFF
+never touches the database. It runs `node dist/main.js` on port 4000.
 
-FROM deps AS build
-COPY apps/web apps/web
-RUN pnpm --filter web build
+`docker/web.Dockerfile` has the same deps → build shape, but its runtime
+stage is nginx serving the static Vite build (`docker/web.nginx.conf`). That
+config only serves files: hashed `/assets/*` are cached for a year,
+`index.html` is `no-cache`, and unknown paths fall back to `index.html` for
+client-side routes. **It knows nothing about `/graphql`.** Routing is the
+gateway's job.
 
-FROM nginx:alpine AS runtime
-COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+Every Dockerfile's deps stage copies **all** workspace `package.json` files
+(api, bff, web) plus `apps/api/prisma`. `pnpm install --frozen-lockfile`
+checks the whole workspace against the lockfile, and api's `postinstall`
+(`prisma generate`) needs its schema. Adding a new app means adding its
+`package.json` line to every Dockerfile.
+
+## The gateway (`docker/gateway.nginx.conf`)
+
+Stock `nginx:1.27-alpine` with the config mounted read-only. There's no
+custom image to build. It:
+
+| Does | How |
+| ---- | --- |
+| Routes `/graphql` → `bff:4000` and everything else → `web:80` | `upstream` blocks; keepalive connections to the BFF |
+| Assigns a **request id** | Keeps the client's `X-Request-Id` or generates `$request_id`; forwards it upstream and returns it in the response |
+| Writes a **JSON access log** | `reqId`, status, duration, upstream time, the same field style as the pino logs |
+| **Rate-limits** `/graphql` | 20 req/s per IP with a burst of 40; returns 429 |
+| Basic hardening | 1 MB body limit, gzip, `nosniff`, `Referrer-Policy` |
+| Health | `GET /healthz`, answered by nginx itself |
+
+## Startup order and healthchecks
+
+`depends_on` with `condition: service_healthy` starts things in order:
+**postgres → api → bff → gateway**.
+
+- `api` checks `GET /health`, which runs `SELECT 1` against Postgres.
+- `bff` checks `GET /health`.
+- `node:22-slim` has no `curl`, so both healthchecks use Node's built-in
+  `fetch` (`node -e "fetch(...)"`).
+- The API runs `prisma migrate deploy` on every start, before listening,
+  and that's a no-op when the schema is up to date. The healthcheck's
+  `start_period` allows time for it.
+
+## Following one request across containers
+
+```bash
+curl -s localhost:8080/graphql -H 'content-type: application/json' \
+  -H 'x-request-id: trace-me' -d '{"query":"{ habits { name currentStreak } }"}'
+docker compose logs gateway bff api | grep trace-me
 ```
 
-`apps/api/prisma` is copied here too, even though this image never runs the
-api — a plain `pnpm install --frozen-lockfile` installs and runs lifecycle
-scripts for every workspace project found in the build context, and api's
-own `postinstall` (`prisma generate`) fails without its schema present, which
-would fail this install too.
+This prints the gateway access line, the BFF access and operation lines,
+and one API access line per REST call, all with `trace-me`. See
+[logging.md](../backend/logging.md).
 
-The frontend calls the relative path `/graphql` (see `apps/web/src/lib/apollo-client.ts`) — Vite's dev server proxies that to the api on `localhost:3000` (see `vite.config.ts`), but nginx needs the equivalent in production. `docker/nginx.conf` proxies `/graphql` to `http://api:3000/graphql` (the `api` hostname resolves via Docker Compose's internal network) and falls back to `/index.html` for client-side routing on every other path.
+## Common pitfalls
 
-## `docker-compose.yml`
+- **`docker compose up` doesn't rebuild.** If an image already exists,
+  Compose reuses it, and new code never reaches the containers. Use
+  `docker compose up --build` after changing code.
+- **502 on `localhost:5173`.** That's the Vite dev server, not Docker. It
+  proxies `/graphql` to `localhost:4000`, which isn't published when the BFF
+  runs in Docker. Open `http://localhost:8080` instead, or point the dev
+  server at the gateway: `BFF_URL=http://localhost:8080 pnpm dev:web`.
 
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: lifeos
-      POSTGRES_USER: lifeos
-      POSTGRES_PASSWORD: lifeos
-    ports: ["5433:5432"] # host port only — the api container talks to "postgres:5432" internally
-    volumes: ["pgdata:/var/lib/postgresql/data"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lifeos"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  api:
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
-    environment:
-      DATABASE_URL: postgres://lifeos:lifeos@postgres:5432/lifeos
-      API_PORT: "3000"
-      NODE_ENV: production
-    ports: ["3000:3000"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  web:
-    build:
-      context: .
-      dockerfile: docker/web.Dockerfile
-    ports: ["8080:80"]
-    depends_on: ["api"]
-
-volumes:
-  pgdata:
-```
+## Postgres host port
 
 Postgres's host port is `5433`, not the default `5432` — pick whichever's actually free on the host (`lsof -nP -iTCP:5432 -sTCP:LISTEN`), since another local Postgres (e.g. one managed by OrbStack/Docker Desktop for a different project) commonly already holds `5432`. Only the host-side mapping matters here; containers still reach Postgres at `postgres:5432` on the internal Docker network regardless of the host port chosen.
 
@@ -136,5 +155,4 @@ If build times become a real pain point as the monorepo grows, `turbo prune
 --docker` (Turborepo) or `pnpm deploy` (pnpm's own equivalent — produces a
 self-contained folder for one workspace package with hard-linked deps) are
 the standard next steps for even tighter, more cacheable Docker layers. Not
-needed yet for a two-app monorepo — the manual multi-stage split above is
-enough.
+needed yet at three apps. The manual multi-stage split above is enough.

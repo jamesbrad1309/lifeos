@@ -8,8 +8,9 @@ BFF (backend) · one pnpm workspace · native TypeScript `#` import aliases (no
 alias plugin) · Biome + oxlint for linting/formatting · Docker + a one-command
 quick start.
 
-The app lives in `apps/api` (NestJS + GraphQL + Prisma) and `apps/web`
-(React + Vite). These docs cover the design decisions and setup behind it.
+The app is `apps/web` (React + Vite), `apps/bff` (GraphQL BFF: Express +
+Apollo) and `apps/api` (NestJS REST + Prisma), behind an nginx gateway in
+Docker. These docs cover the design decisions and setup behind it.
 Each file below is a short, standalone read.
 
 ## Map
@@ -22,6 +23,7 @@ Each file below is a short, standalone read.
 - [Use cases](domain/use-cases.md) — what the app needs to do, by lifecycle stage, with build status + impact score
 - [Knowledge graph](domain/knowledge-graph.md) — how domain entities, use cases, backend, and frontend connect
 - [Habit data model](domain/habit-data-model.md) — modeling "custom habit + arbitrary tracked info"
+- [Journal](domain/journal.md) — actions, feelings and events; the `/slash` list syntax; linking feelings to events
 
 **Finance** (planned module, not built yet)
 - [Finance module overview](finance/index.md) — scope, build order, reading order
@@ -32,7 +34,7 @@ Each file below is a short, standalone read.
 - [Money handling](finance/money-handling.md) — integer minor units, currency, dates
 - [Finance data model](finance/data-model.md) — Prisma models, derived balances, transfers
 - [Finance backend module](finance/backend-module.md) — Nest module, DTOs, context wiring, DataLoaders
-- [Finance GraphQL schema](finance/graphql-schema.md) — SDL sketch for `graphql/finance/`
+- [Finance GraphQL schema](finance/graphql-schema.md) — SDL sketch for the BFF's `graphql/finance/`
 - [Budgets & reports](finance/budgets-and-reports.md) — budget vs actual, spend by category, cash flow
 - [Recurring transactions & CSV import](finance/recurring-and-import.md) — lazy generation, dedupe
 - [Finance frontend](finance/frontend.md) — components, money formatting, Apollo pagination, charts
@@ -41,10 +43,11 @@ Each file below is a short, standalone read.
 **Frontend**
 - [Frontend stack](frontend/stack.md) — Vite + React + TS baseline
 - [shadcn/ui setup](frontend/shadcn-setup.md) — with native `#` aliases, not `@/*`
+- [App shell](frontend/app-shell.md) — sidebar, app bar, hash-routed views, full-width page layouts
 
 **Backend**
-- [NestJS structure](backend/nestjs-structure.md) — Nest as host, colocated GraphQL feature folders
-- [GraphQL BFF layer](backend/graphql-bff.md) — small Express/Apollo server, schema colocated per feature
+- [GraphQL BFF](backend/graphql-bff.md) — `apps/bff`: Express + Apollo, resolvers call the API over REST, DataLoaders, error mapping
+- [API structure](backend/nestjs-structure.md) — `apps/api`: NestJS REST endpoints, where domain logic lives
 - [Prisma & data access](backend/prisma-and-data-access.md) — schema, migrations, `PrismaService`, JSON/Date gotchas
 - [Logging](backend/logging.md) — pino (Node's zap), HTTP/GraphQL/service-level logs, the `name` field gotcha
 

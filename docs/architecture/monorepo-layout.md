@@ -1,19 +1,23 @@
 # Monorepo Layout
 
-One pnpm workspace holding the frontend, the NestJS/GraphQL backend, and any
-code shared between them.
+One pnpm workspace holding the frontend, the GraphQL BFF, the NestJS REST
+API, and any code shared between them. See [overview.md](overview.md) for
+how they talk to each other.
 
 ```
 lifeos/
 ├── apps/
 │   ├── web/                 # React + Vite + TS + shadcn/ui
-│   └── api/                 # NestJS + GraphQL (BFF)
+│   ├── bff/                 # Express + Apollo Server: GraphQL for the frontend
+│   └── api/                 # NestJS REST API + Prisma: domain logic, DB access
 ├── packages/
 │   ├── graphql-schema/      # shared generated types/operations (optional, see below)
 │   └── config/              # shared tsconfig/biome base configs
 ├── docker/
-│   ├── web.Dockerfile
-│   └── api.Dockerfile
+│   ├── web.Dockerfile + web.nginx.conf
+│   ├── bff.Dockerfile
+│   ├── api.Dockerfile
+│   └── gateway.nginx.conf    # client gateway: the only public entry point
 ├── docker-compose.yml
 ├── pnpm-workspace.yaml
 ├── package.json              # root scripts + devDependencies (biome, oxlint, typescript)

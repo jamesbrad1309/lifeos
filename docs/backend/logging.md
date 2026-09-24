@@ -3,8 +3,9 @@
 Go's `zap` is fast, structured (key/value fields, not string-interpolated
 messages), and leveled. **pino** is the closest Node equivalent — same
 philosophy, consistently one of the fastest JSON loggers in the ecosystem —
-so it's what `apps/api` uses everywhere, instead of `console.log` or Nest's
-default text logger.
+so it's what `apps/api` and `apps/bff` use everywhere, instead of
+`console.log` or Nest's default text logger. The nginx gateway writes JSON
+access logs in the same style.
 
 ## One shared instance, like a package-level `*zap.Logger`
 
@@ -29,25 +30,55 @@ export function scopedLogger(component: string) {
   `logger.With(zap.String("component", ...))` equivalent — every log line
   from that logger carries `"component":"HabitsService"` automatically.
 
-## Three layers of logging
+## One request id across gateway → BFF → API
 
-1. **HTTP access logs** (`httpLogger`, built with `pino-http`) — mounted as
-   Express middleware in `main.ts` *before* the `/graphql` route, so every
-   request (including GraphQL POSTs) gets a structured line: method, url,
-   status, response time, and a request id. It has no idea GraphQL exists —
-   it's the same access-log layer any REST endpoint would get for free.
-2. **GraphQL operation logs** (`graphql/logging.plugin.ts`) — an Apollo
-   Server plugin logging one line per operation: `operationName`,
-   `durationMs`, and (via `didEncounterErrors`) any resolver errors. It reuses
-   the *same* per-request child logger `pino-http` already attached to
-   `req.log` (threaded through `GraphQLContext.log` in `graphql/context.ts`),
-   so a GraphQL operation's log line shares a request id with its HTTP access
-   log line — the two can be correlated.
-3. **Service-level business-event logs** — `HabitsService`/
+```
+gateway   {"service":"gateway","reqId":"86e2…","uri":"/graphql","status":200,"durationMs":0.031}
+bff       {"service":"bff","req":{"id":"86e2…"},"msg":"graphql operation completed","durationMs":25}
+api       {"req":{"id":"86e2…"},"msg":"GET /dashboard/stats 200","responseTime":15}
+```
+
+1. The **gateway** keeps the client's `X-Request-Id` or generates one
+   (`$request_id`), logs it as `reqId`, and forwards it to the BFF.
+2. The **BFF**'s `pino-http` uses that header as the request id
+   (`genReqId`). Its access log, GraphQL operation log and API-client logs
+   all go through that request's child logger (`req.log`).
+3. The BFF's `ApiClient` forwards `x-request-id` on every REST call.
+4. The **API**'s `pino-http` uses it the same way.
+
+Filter on one id to see everything a user action did:
+`docker compose logs gateway bff api | grep <id>`. The id is also returned
+in the `X-Request-Id` response header, so it can be copied from the browser's
+network tab.
+
+When a service is called without the header (for example `curl` straight to
+the API in local dev), it generates its own id.
+
+## Layers of logging
+
+**BFF (`apps/bff`)**
+
+1. **HTTP access log** (`httpLogger`, `pino-http`): one line per request,
+   mounted before `/graphql`. `/health` is excluded to avoid healthcheck noise.
+2. **GraphQL operation log** (`graphql/logging.plugin.ts`): one line per
+   operation with `operationName` and `durationMs`. Errors are logged with
+   their `extensions.code`: `warn` for client mistakes (`BAD_USER_INPUT`,
+   `NOT_FOUND`), `error` for everything else.
+3. **API-client log** (`clients/api-client.ts`): every REST call with
+   `method`, `path`, `status` and `durationMs`. Successful calls log at
+   `debug` (set `LOG_LEVEL=debug` to see them), 4xx at `warn`, and 5xx or
+   connection failures at `error`.
+
+**API (`apps/api`)**
+
+1. **HTTP access log**: one line per REST call from the BFF.
+2. **Service-level business events**: `HabitsService` and
    `HabitEntriesService` each hold a `scopedLogger("...")` and log the
    *writes* that matter (`habit created`, `habit archived`, `habit entry
-   upserted`), not every read — reads are already covered by the HTTP/GraphQL
-   layers above and would just be noise.
+   upserted`). Reads aren't logged, because the access logs already cover them.
+
+Every BFF line carries `"service":"bff"` (the logger's `base` field), so
+mixed logs can be filtered by service.
 
 ## Nest's own framework logs go through pino too
 

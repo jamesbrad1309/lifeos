@@ -1,9 +1,11 @@
 # Finance Backend Module
 
-The module follows the same split as habits (see
-[nestjs-structure.md](../backend/nestjs-structure.md)): **standard Nest
-modules** hold services and DTOs, and **`graphql/finance/`** holds the
-colocated SDL and resolvers.
+The module follows the same split as habits:
+
+- **`apps/api`**: a Nest `FinanceModule` with REST controllers, services,
+  DTOs and all the money logic. See [nestjs-structure.md](../backend/nestjs-structure.md).
+- **`apps/bff`**: `graphql/finance/`, with the colocated SDL and resolvers
+  that call those REST endpoints. See [graphql-bff.md](../backend/graphql-bff.md).
 
 ## Layout
 
@@ -20,16 +22,18 @@ apps/api/src/
 │   ├── recurring.service.ts       # rule → transaction generation
 │   ├── import.service.ts          # CSV parse + dedupe
 │   ├── money.util.ts              # pure helpers: sumMinor, monthRange("2026-09")
-│   ├── finance.loader.ts          # per-request DataLoaders
+│   ├── *.controller.ts            # REST: accounts, transactions, budgets, quick-log, reports
 │   └── dto/
 │       ├── create-transaction.dto.ts
 │       ├── create-transfer.dto.ts
 │       ├── upsert-budget.dto.ts
 │       └── …
-└── graphql/
-    └── finance/
-        ├── finance.schema.graphql
-        └── finance.resolvers.ts
+
+apps/bff/src/graphql/
+├── finance/
+│   ├── finance.schema.graphql     # see graphql-schema.md
+│   └── finance.resolvers.ts       # ctx.api.get("/accounts") etc.
+└── loaders.ts                     # + accountBalance, categorySpend loaders
 ```
 
 The finance services live in one `FinanceModule`, not a module per entity.
@@ -94,49 +98,71 @@ async createTransfer(input: CreateTransferInput) {
 
 Delete both legs with `deleteMany({ where: { transferId } })`.
 
-## Wiring into the GraphQL context
+## REST endpoints and BFF wiring
 
-Three places change, the same ones habits used:
+**API side** (`apps/api`): add `FinanceModule` to `app.module.ts` `imports`.
+Its controllers expose resource-shaped endpoints, for example:
 
-1. `app.module.ts`: add `FinanceModule` to `imports`.
-2. `main.ts`: `app.get(TransactionsService)` etc., passed to `buildContext`.
-3. `graphql/context.ts`: extend `GraphQLContext` / `ContextDeps` with the
-   finance services and loaders.
+| Endpoint | Used by |
+| -------- | ------- |
+| `GET /accounts`, `POST /accounts`, `PATCH /accounts/:id`, `POST /accounts/:id/reconcile` | Money setup |
+| `GET /accounts/balances?ids=a,b` | **Batch**: the BFF's `accountBalance` loader |
+| `GET /transactions?…filter&cursor`, `POST /transactions`, `DELETE /transactions/:id` | Transaction list, undo |
+| `POST /transfers` | Transfers, card payments |
+| `GET /quick-log/context?hour=8&dayOfWeek=3`, `POST /quick-log` | Quick log |
+| `GET /budgets/:month`, `GET /reports/spend-by-category/:month`, `GET /reports/cash-flow?months=12` | Budgets, reports |
 
-If the list of injected services grows unwieldy, pass a single
-`FinanceFacade` that exposes the finance services. That keeps `ContextDeps`
-short.
+**BFF side** (`apps/bff`): add `graphql/finance/`. `graphql/schema.ts`
+already globs `**/*.graphql` and `**/*.resolvers.js`, so the folder is
+**picked up automatically**. Add the response shapes to
+`clients/api-types.ts`. Nothing else is wired by hand: resolvers use
+`ctx.api` and `ctx.loaders`, which exist on every request.
 
-`graphql/schema.ts` already globs `**/*.graphql` and `**/*.resolvers.*`, so
-**`graphql/finance/` is picked up automatically** with no registry to edit.
+## Batching: API batch endpoint + BFF DataLoader
 
-## DataLoaders
-
-Resolving `Account.balanceMinor` for every account in a list would run one
-query per account. Batch it the way `habit-entries.loader.ts` does:
+Resolving `Account.balanceMinor` for every account in a list would make one
+HTTP call per account. Use the same pattern as habit stats: one **batch
+endpoint in the API** and one **DataLoader in the BFF**.
 
 ```ts
-// finance.loader.ts (sketch)
-export const createBalanceLoader = (prisma: PrismaService) =>
-  new DataLoader<string, number>(async (accountIds) => {
-    const sums = await prisma.transaction.groupBy({
+// apps/api — accounts.service.ts (sketch): one groupBy for any number of accounts
+async balances(accountIds: string[]) {
+  const [accounts, sums] = await Promise.all([
+    this.prisma.account.findMany({ where: { id: { in: accountIds } } }),
+    this.prisma.transaction.groupBy({
       by: ["accountId"],
-      where: { accountId: { in: [...accountIds] } },
+      where: { accountId: { in: accountIds } },
       _sum: { amountMinor: true },
-    });
-    const byId = new Map(sums.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
-    return accountIds.map((id) => byId.get(id) ?? 0);
-  });
+    }),
+  ]);
+  const byId = new Map(sums.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
+  return accounts.map((a) => ({
+    accountId: a.id,
+    balanceMinor: a.openingBalanceMinor + (byId.get(a.id) ?? 0),
+  }));
+}
 ```
 
-The resolver adds `openingBalanceMinor` to the loaded sum. The same pattern
-works for `Category.spentThisMonth` and `Budget.spentMinor`.
+```ts
+// apps/bff — graphql/loaders.ts (sketch)
+accountBalance: new DataLoader(async (ids) => {
+  const rows = await api.get<ApiAccountBalance[]>(`/accounts/balances?ids=${idsParam(ids)}`);
+  const byId = new Map(rows.map((r) => [r.accountId, r.balanceMinor]));
+  return ids.map((id) => byId.get(id) ?? new Error(`No balance for account ${id}`));
+}),
+```
 
-The loader sums **all** of an account's transactions, while balances are
-defined as "since `openingBalanceDate`" (see
+Derived card and loan values (available credit, utilisation, next due date,
+payoff month) are computed **in the API** next to the balance, and returned
+by the same batch endpoint. They're domain rules, so they don't belong in
+BFF resolvers. The same pattern works for `Category.spentThisMonth` and
+`Budget.spentMinor`.
+
+The balance query sums **all** of an account's transactions, while balances
+are defined as "since `openingBalanceDate`" (see
 [account-setup.md](account-setup.md)). The two agree as long as the DTOs
 **reject any transaction dated before its account's `openingBalanceDate`**.
-Enforce that in `TransactionsService`, and the loader stays a simple
+Enforce that in `TransactionsService`, and the query stays a simple
 `groupBy`.
 
 ## Seeding default categories

@@ -34,13 +34,19 @@ export default defineConfig({
 
 ## GraphQL client
 
-Use Apollo Client (or urql) against the NestJS `/graphql` endpoint. Colocate
+Use Apollo Client against the BFF's `/graphql` endpoint (`apps/bff`). In
+dev, Vite proxies `/graphql` to `BFF_URL`, which defaults to
+`http://localhost:4000` (a BFF from `pnpm dev:bff`). To run the dev server
+against the Docker stack instead, use
+`BFF_URL=http://localhost:8080 pnpm dev:web`. Colocate
 queries with the components that use them; generate typed hooks from the
 backend schema with GraphQL Code Generator so a schema change is a
 compile-time error in `apps/web`, not a runtime one.
 
 ## What's intentionally deferred to other docs
 
+- Page layout (sidebar, app bar, hash-routed views) — see
+  [app-shell.md](app-shell.md).
 - Import aliases (`#components/*`, not `@/*`) — see
   [typescript-import-aliases.md](../shared/typescript-import-aliases.md).
 - shadcn/ui installation specifics — see [shadcn-setup.md](shadcn-setup.md).

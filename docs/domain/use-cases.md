@@ -26,7 +26,7 @@ improves UX · `2` edge case / power-user · `1` speculative.
 | Motivation & rewards | 0 | 5 | Streak freeze (3) |
 | Routines & structure | 0 | 4 | Habit stacking / routines (3) |
 | Insights | 0 | 4 | Best / worst weekday per habit (3) |
-| Journaling & mood | 0 | 3 | Daily mood / energy check-in (3) |
+| Journaling & mood | 6 | 4 | Which events drive which feelings (3) |
 | Cross-module (habits × finance) | 0 | 5 | "No-spend day" habit auto-checked from transactions (3) |
 | **Finance** (separate doc) | 0 | 50 | Money setup and quick log, see [finance/use-cases.md](../finance/use-cases.md) |
 
@@ -47,11 +47,11 @@ improves UX · `2` edge case / power-user · `1` speculative.
 |  | ✅ | **Log a quantitative value for today** | 4 | `Mutation.upsertHabitEntry` (`value: 5`) |
 |  | ✅ | **Re-check/correct today's entry without duplicating** | 3 | Upsert on `(habitId, date)` by design |
 |  | ⬜ | **Add a note to today's entry** | 2 | Backend field exists (`note`) — no note input in either UI view |
-| **Dashboard & gamification** | ✅ | **See aggregate level/XP/streak stats across all habits** | 4 | `Query.dashboardStats`, `DashboardHeader` |
+| **Dashboard & gamification** | ✅ | **See aggregate level/XP/streak stats across all habits** | 4 | `Query.dashboardStats`, `StatTiles` + the sidebar's level card |
 |  | ✅ | **See per-habit streak, points, and level** | 4 | `Habit.currentStreak`/`points`/`level`, shown as card badges |
 |  | ✅ | **See a GitHub-style contribution heatmap per habit** | 3 | `Habit.heatmap`, `HeatmapGrid` (120-day window) |
 |  | ⬜ | **See longest streak / total completions per habit** | 2 | Queried (`longestStreak`, `totalCompletions`) but not displayed in either view yet |
-| **Calendar** | ✅ | **Day view: today's due habits on a time-of-day timeline** | 4 | `DayCalendar`, positions habits by `startTime`; untimed habits shown as an "Anytime" chip row |
+| **Calendar** | ✅ | **Day view: today's due habits on a time-of-day timeline** | 4 | `DayCalendar`, positions habits by `startTime`; untimed habits in a checkable "Anytime today" list beside it |
 |  | ✅ | **Check a habit off directly from the day view** | 4 | Same `upsertHabitEntry` mutation as the dashboard card |
 |  | ⬜ | **Week or month calendar view** | 2 | Only a single day view exists so far |
 | **History & review** | ⬜ | **View a single habit's full entry history** (list, not just heatmap) | 2 | `Query.habitEntries(habitId)` exists — no history list UI |
@@ -69,9 +69,16 @@ improves UX · `2` edge case / power-user · `1` speculative.
 |  | ⬜ | **Completion-rate trend** (this month vs last month) | 3 | Two windowed `computeTotalCompletions` calls divided by due-day counts |
 |  | ⬜ | **Weekly review screen**: a summary each Sunday with wins, misses, and streaks at risk | 3 | A `weeklyReview(weekStart)` query that aggregates existing stats |
 |  | ⬜ | **Habit correlations** ("on days you exercise you sleep 40 min more") | 2 | Pairwise comparison of entry values across habits on the same dates; needs enough history to mean anything |
-| **Journaling & mood** | ⬜ | **Daily mood / energy check-in** (1–5) | 3 | Can be modelled as a built-in habit with `unit: "mood"`, so it reuses entries, heatmaps and streaks with no new tables |
-|  | ⬜ | **Daily journal note** that isn't tied to a single habit | 2 | `JournalEntry(date, body)`; shown in the day view |
-|  | ⬜ | **Mood overlay on heatmaps**: tint a habit's heatmap by that day's mood | 1 | Join the mood habit's entries onto `Habit.heatmap` by date |
+| **Journaling & mood** | ✅ | **Log what you did** (an ACTION, with optional duration) | 4 | One textarea: bulleted `/action` lines, parsed by `apps/web/src/lib/journal-syntax.ts`; saved atomically by `Mutation.createJournalEntries` |
+|  | ✅ | **Log how you felt** (a FEELING: emotion word + 1–5 intensity, optional "why") | 4 | `/feeling anxious 4/5 why…`; the slash menu autocompletes emotions from `apps/web/src/lib/emotions.ts` |
+|  | ✅ | **Log what happened** (an EVENT, tagged good / neutral / rough) | 4 | `/event … (+)` / `(=)` / `(-)` for tone |
+|  | ✅ | **Link a feeling or action to the event behind it** ("stressed ← deadline moved") | 3 | Indent an item under an `/event` in the same list (`triggerIndex`), or press ♥ on a saved event; stored as `JournalEntry.triggerId` (`SET NULL` on delete) |
+|  | ✅ | **Browse past days** with a week strip showing each day's dominant emotion | 3 | `Query.journalDays(from, to)`; ← / → and `t` shortcuts |
+|  | ✅ | **#tags and filters** by kind or tag within a day | 2 | `tags` parsed from `text` by the API |
+|  | ⬜ | **Which events drive which feelings** (e.g. "#work events are followed by stress 70% of the time") | 3 | Group FEELING entries by their trigger's tags over a window |
+|  | ⬜ | **Search the whole journal** by text or tag across all days | 2 | `journalEntries` only takes a single `date` today |
+|  | ⬜ | **Daily mood as a streakable habit** | 2 | FEELING entries capture mood, but there's no daily "checked in" streak or heatmap for it |
+|  | ⬜ | **Mood overlay on heatmaps**: tint a habit's heatmap by that day's mood | 1 | Join FEELING entries' valence onto `Habit.heatmap` by date |
 | **Cross-module (habits × finance)** | ⬜ | **"No-spend day" habit auto-checked from transactions** | 3 | Finance upserts `HabitEntry`, see [habits-integration.md §1](../finance/habits-integration.md#1-no-spend-day-habit-auto-checked) |
 |  | ⬜ | **Savings-goal contributions count as check-ins** ("save £10/day") | 3 | `SavingsGoal.habitId`, see [habits-integration.md §2](../finance/habits-integration.md#2-savings-goal-as-a-habit) |
 |  | ⬜ | **"Log today's spending" habit**: an evening habit that opens quick log and counts as done once anything is logged that day | 3 | Auto-checked like no-spend days; see [habits-integration.md §5](../finance/habits-integration.md#5-log-todays-spending-habit) |

@@ -98,12 +98,13 @@ recreate columns to resolve a diff it can't express as a safe migration.
    ```
 
 2. **`DateTime` fields come back as real `Date` objects**, same as they did
-   under TypeORM — and hit the exact same GraphQL `String` scalar coercion
-   bug (see the comment in `graphql/habits/habits.resolvers.ts`): GraphQL's
-   built-in `String.serialize` calls `isFinite(value)`, which is `true` for
-   a bare `Date` (via its numeric epoch coercion), silently turning the date
-   into a millisecond-timestamp string instead of an ISO one. Every
-   `DateTime` field exposed as GraphQL `String` needs its own field resolver
-   calling `.toISOString()` (or `.toISOString().slice(0, 10)` for the
-   date-only `HabitEntry.date` field) — never rely on the default identity
-   resolver for a `Date`.
+   under TypeORM. When GraphQL lived in the API, this hit a GraphQL `String`
+   scalar coercion bug: `String.serialize` calls `isFinite(value)`, which is
+   `true` for a bare `Date` (via its numeric epoch coercion), silently
+   turning the date into a millisecond-timestamp string instead of an ISO
+   one. Now the API returns JSON, and `JSON.stringify` turns a `Date` into an
+   ISO string, so the BFF only ever sees strings. The remaining rule: send
+   **date-only** columns (`@db.Date`, like `HabitEntry.date`) as
+   `"YYYY-MM-DD"` explicitly (`toEntryDto` in `habit-entries.controller.ts`).
+   Otherwise they arrive as `"2026-09-24T00:00:00.000Z"`, a UTC-midnight
+   instant that is a day off in negative-offset time zones.

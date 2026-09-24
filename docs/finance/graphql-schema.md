@@ -1,6 +1,8 @@
 # Finance GraphQL Schema
 
-This is the SDL sketch for `apps/api/src/graphql/finance/finance.schema.graphql`.
+This is the SDL sketch for `apps/bff/src/graphql/finance/finance.schema.graphql`.
+The resolvers call finance REST endpoints on the API (see
+[backend-module.md](backend-module.md#rest-endpoints-and-bff-wiring)).
 It extends the root `Query`/`Mutation` in the same way `habits.schema.graphql`
 does, and reuses the `JSON` scalar from `root.schema.graphql`.
 

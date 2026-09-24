@@ -1,112 +1,105 @@
-# Backend Structure: Standard Nest Modules + a Colocated GraphQL Server
+# API Structure: NestJS REST Service (`apps/api`)
 
-`apps/api` is a NestJS app used for its module/DI/config conventions, not for
-`@nestjs/graphql`. The rest of the backend follows standard Nest folder
-conventions (one module per domain, with its own service/DTOs); **colocation
-is scoped to the `graphql/` tree only** — that's the small Apollo Server
-"application" mounted on Nest's Express instance, where each feature's SDL
-and resolvers sit together. See [graphql-bff.md](graphql-bff.md) for why that
-piece specifically is built this way.
+`apps/api` is a standard NestJS app: one module per domain, each with its
+own controller, service and DTOs. It exposes an **internal REST API** that
+only the GraphQL BFF (`apps/bff`) calls. It owns all business logic and all
+database access (Prisma). GraphQL no longer lives here; see
+[graphql-bff.md](graphql-bff.md) and [overview.md](../architecture/overview.md).
 
 ## Folder layout
-
-Two separate trees, on purpose: standard Nest module structure for
-everything Nest owns (modules/services/DTOs), and colocation *only* inside
-`graphql/` — that's the "GraphQL server application" living inside the Nest
-app, not a convention applied to the whole backend. Database access goes
-through Prisma, not per-module entity classes — see
-[prisma-and-data-access.md](prisma-and-data-access.md).
 
 ```
 apps/api/
 ├── prisma/
 │   ├── schema.prisma               # single source of truth for the DB schema
 │   └── migrations/
-│
 └── src/
-    ├── main.ts                     # Nest bootstrap + mounts Apollo at /graphql
-    │
-    ├── graphql/                    # the colocated GraphQL server application
-    │   ├── schema.ts                # merges all feature schemas + resolvers into one executable schema
-    │   ├── context.ts               # builds per-request GraphQL context (req, services, loaders)
-    │   ├── root.schema.graphql      # base Query/Mutation types + the JSON scalar
-    │   ├── root.resolvers.ts
-    │   ├── habits/
-    │   │   ├── habits.schema.graphql  # SDL for this feature
-    │   │   └── habits.resolvers.ts    # resolvers for the types/fields above, colocated with the SDL
-    │   └── habit-entries/
-    │       ├── habit-entries.schema.graphql
-    │       └── habit-entries.resolvers.ts
-    │
-    ├── habits/                     # standard NestJS module (Nest CLI shape)
-    │   ├── habits.module.ts
-    │   ├── habits.service.ts        # talks to Prisma directly
-    │   ├── schedule.util.ts
-    │   └── dto/
-    │       └── create-habit.dto.ts  # zod schema + inferred type
+    ├── main.ts                     # Nest bootstrap, pino logger, access-log middleware, shutdown hooks
+    ├── app.module.ts               # ConfigModule, DatabaseModule, feature modules, HealthController
+    ├── habits/
+    │   ├── habits.module.ts         # imports HabitEntriesModule (stats need entries)
+    │   ├── habits.controller.ts     # /habits REST routes
+    │   ├── dashboard.controller.ts  # /dashboard/stats
+    │   ├── habits.service.ts        # CRUD, talks to Prisma directly
+    │   ├── habit-stats.service.ts   # streaks, points, level, heatmap, dashboard totals
+    │   ├── schedule.util.ts / streak.util.ts / gamification.util.ts   # pure domain rules
+    │   └── dto/                     # zod schemas + inferred types
     ├── habit-entries/
-    │   ├── habit-entries.module.ts
+    │   ├── habit-entries.controller.ts
     │   ├── habit-entries.service.ts
-    │   ├── habit-entries.loader.ts   # per-request DataLoader
     │   └── dto/
-    │
-    ├── common/
-    │   ├── database/
-    │   │   ├── prisma.service.ts    # PrismaClient wrapped as a Nest provider
-    │   │   └── database.module.ts   # @Global() — exports PrismaService once
-    │   └── config/                  # env validation (ConfigModule)
-    └── app.module.ts                 # imports DatabaseModule, HabitsModule, HabitEntriesModule
+    ├── journal/                     # actions, feelings, events (see domain/journal.md)
+    │   ├── journal.controller.ts    # /journal-entries REST routes
+    │   ├── journal.service.ts       # per-kind column mapping, #tag parsing, atomic batch create
+    │   └── dto/journal-entry.dto.ts # zod discriminated union on `kind`
+    └── common/
+        ├── config/env.ts            # zod env validation for ConfigModule
+        ├── database/                # PrismaService + @Global() DatabaseModule
+        ├── http/zod-validation.pipe.ts   # zod DTO → 400 with `issues`
+        ├── health/health.controller.ts   # GET /health (checks the DB) for Docker
+        └── logger/                  # pino, pino-http, Nest logger adapter
 ```
 
-- `graphql/<feature>/` is where colocation lives: a feature's SDL and its
-  resolvers sit in the same folder so the GraphQL contract is readable in one
-  place. Adding a habit-tracking feature (e.g. `streaks/`) here means adding
-  one new folder under `graphql/`, not touching a shared `typeDefs/` and a
-  shared `resolvers/` directory in lockstep.
-- `habits/`, `habit-entries/`, etc. at the top level are ordinary Nest
-  modules — providing injectable services and DTOs. They know nothing about
-  GraphQL; resolvers import *from* them, not the other way around. There's no
-  `entities/` folder — Prisma's generated types (from `prisma/schema.prisma`)
-  are the entity types, imported as `import type { Habit } from "@prisma/client"`.
+There's no `entities/` folder. Prisma's generated types are the entity types
+(`import type { Habit } from "@prisma/client"`). See
+[prisma-and-data-access.md](prisma-and-data-access.md).
 
-## Why keep NestJS at all, instead of pure Express
+## REST endpoints consumed by the BFF
 
-- `ConfigModule` + env validation (`@nestjs/config` + zod) for typed,
-  validated environment variables.
-- A conventional home for services/DI (`HabitsService` is just an
-  `@Injectable()`, testable in isolation with Nest's testing module).
-- A place to add REST endpoints later if needed (health checks, webhooks,
-  file upload) without re-platforming.
+Resource-shaped, not screen-shaped. Shaping data for screens is the BFF's
+job.
 
-## Wiring the resolvers to Nest's DI container
+| Method & path | Returns | Notes |
+| ------------- | ------- | ----- |
+| `GET /habits` | `Habit[]` (active) | `?archived=true` for archived habits |
+| `GET /habits/today` | `Habit[]` due today | Excludes paused habits |
+| `GET /habits/stats?ids=a,b` | `HabitStats[]` | **Batch** endpoint for the BFF's `habitStats` DataLoader |
+| `GET /habits/:id` | `Habit` | 404 if missing |
+| `POST /habits` | `Habit` | Body validated by `createHabitSchema` |
+| `PATCH /habits/:id` | `Habit` | `updateHabitSchema` |
+| `POST /habits/:id/archive` · `/unarchive` · `/pause` · `/resume` | `Habit` | |
+| `GET /habits/:id/entries` | `HabitEntry[]` | Newest first |
+| `GET /habit-entries/by-date/:date?habitIds=a,b` | `HabitEntry[]` | **Batch** endpoint for the `todayEntry` DataLoader |
+| `PUT /habit-entries` | `HabitEntry` | Upsert on `(habitId, date)` |
+| `GET /dashboard/stats` | Dashboard totals | |
+| `GET /journal-entries?date=YYYY-MM-DD` | `JournalEntry[]` | One day, in time order, each with a trimmed `trigger` |
+| `GET /journal-entries/days?from=&to=` | Per-day summaries | Counts per kind + emotions; at most 62 days |
+| `POST /journal-entries` · `POST /journal-entries/batch` | `JournalEntry` · `JournalEntry[]` | Batch is one transaction; `triggerIndex` links to an earlier EVENT in the list |
+| `PUT /journal-entries/:id` · `DELETE /journal-entries/:id` | `JournalEntry` · `{ id }` | PUT replaces the whole entry |
+| `GET /health` | `{ status: "ok" }` | Runs `SELECT 1`; used by the Compose healthcheck |
 
-Because resolvers are plain functions (not `@Resolver()` classes), they need
-explicit access to Nest-managed services. Build the GraphQL context per
-request from the Nest `INestApplication` instance:
+Response conventions:
 
-```ts
-// main.ts (sketch)
-const app = await NestFactory.create(AppModule);
-const habitsService = app.get(HabitsService);
+- **Dates** are ISO strings (JSON serialisation of `Date`). `HabitEntry.date`
+  is sent as `"YYYY-MM-DD"` (`toEntryDto`), because it's a calendar day, not
+  an instant.
+- **Validation errors** are `400 { message: "Validation failed", issues: ZodIssue[] }`
+  from `ZodValidationPipe`. The BFF forwards `issues` as a `BAD_USER_INPUT`
+  GraphQL error.
+- **Not found** is Nest's standard `404 { message }` from `NotFoundException`.
+- **Graceful shutdown**: `main.ts` calls `app.enableShutdownHooks()`, so a
+  SIGTERM (`docker compose stop`, redeploys) closes the HTTP server and runs
+  `onModuleDestroy` (Prisma disconnects). Without it, Node running as PID 1
+  in the container ignores SIGTERM and Docker SIGKILLs it after 10 s
+  (exit 137).
+- **Static routes come before `:id`** in `HabitsController`
+  (`today` and `stats`), or Nest would treat `"stats"` as a habit id.
 
-const apollo = new ApolloServer({ schema: executableSchema });
-await apollo.start();
+## Why NestJS for the API
 
-app.use(
-  "/graphql",
-  express.json(),
-  expressMiddleware(apollo, {
-    context: async ({ req }) => buildContext(req, { habitsService }),
-  }),
-);
+- `ConfigModule` with zod-validated environment variables.
+- DI for services, which keeps them testable in isolation with Nest's
+  testing module.
+- Controllers, pipes and exception filters give REST routing, validation
+  and consistent error bodies with little code.
 
-await app.listen(3000);
-```
+## Where domain logic lives
 
-`buildContext` (in `graphql/context.ts`) is the one place that turns
-Nest-resolved singletons (from the `habits/`, `habit-entries/` modules) into
-the `context` object every resolver under `graphql/` receives — see
-[graphql-bff.md](graphql-bff.md) for the resolver side of this contract.
+Streaks, points, levels and heatmaps are computed in `HabitStatsService`
+from pure functions in `streak.util.ts` and `gamification.util.ts`. They were
+previously computed in GraphQL resolvers and moved here when the BFF was
+split out. The rule: **if it's a decision about the domain, it goes in the
+API**. The BFF only fetches, batches and reshapes.
 
 ## Gotcha: don't let the linter turn injected services into type-only imports
 

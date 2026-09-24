@@ -11,6 +11,8 @@ graph TD
         Habit["Habit"]
         Entry["HabitEntry"]
         Habit -->|has many| Entry
+        Journal["JournalEntry<br/>ACTION · FEELING · EVENT"]
+        Journal -->|triggered by an EVENT| Journal
     end
 
     subgraph UseCases["Use-case groups — use-cases.md"]
@@ -19,11 +21,14 @@ graph TD
         Dash["Dashboard & gamification<br/>streaks · points · level · heatmap"]
         Cal["Calendar<br/>day timeline by startTime"]
         Hist["History & review<br/>per-habit entry log"]
+        JournalUC["Journaling & mood<br/>did · felt · happened · because of"]
     end
 
-    subgraph Backend["Backend — nestjs-structure.md, graphql-bff.md, prisma-and-data-access.md"]
-        GQL["Colocated GraphQL resolvers<br/>graphql/habits, graphql/dashboard"]
-        Services["HabitsService / HabitEntriesService"]
+    subgraph Backend["Backend — graphql-bff.md, nestjs-structure.md, prisma-and-data-access.md"]
+        GQL["apps/bff: GraphQL resolvers + DataLoaders<br/>graphql/habits, graphql/dashboard, graphql/journal"]
+        REST["apps/api: REST controllers<br/>/habits, /habit-entries, /dashboard, /journal-entries"]
+        Services["HabitsService / HabitEntriesService / HabitStatsService"]
+        JournalSvc["JournalService"]
         Streak["streak.util.ts"]
         Gamif["gamification.util.ts"]
         Prisma["Prisma / Postgres"]
@@ -33,8 +38,9 @@ graph TD
         Card["HabitCard"]
         EditDlg["EditHabitDialog + ScheduleEditor"]
         DayCal["DayCalendar"]
-        Header["DashboardHeader"]
+        Header["StatTiles + sidebar LevelCard"]
         Heatmap["HeatmapGrid"]
+        JournalUI["JournalView<br/>JournalComposer + SlashTextarea · WeekStrip"]
     end
 
     Manage --> Habit
@@ -42,6 +48,7 @@ graph TD
     Dash --> Entry
     Cal --> Habit
     Hist --> Entry
+    JournalUC --> Journal
 
     Manage --> Services
     Track --> Services
@@ -51,19 +58,25 @@ graph TD
     Cal --> Services
     Hist --> Services
 
+    JournalUC --> JournalSvc
     Services --> Prisma
-    GQL --> Services
+    JournalSvc --> Prisma
+    REST --> JournalSvc
+    GQL -->|HTTP| REST
+    REST --> Services
 
     Manage --> EditDlg
     Track --> Card
     Dash --> Header
     Dash --> Heatmap
     Cal --> DayCal
+    JournalUC --> JournalUI
 
     EditDlg --> GQL
     Card --> GQL
     DayCal --> GQL
     Header --> GQL
+    JournalUI --> GQL
 ```
 
 ## How to read it
@@ -74,12 +87,12 @@ graph TD
   *derived from* entries, never stored themselves (see "Derived data" in
   the data model doc) — this is why `streak.util.ts`/`gamification.util.ts`
   sit directly under Dashboard rather than under a generic "utils" bucket.
-- **Use cases → Backend**: every group ultimately funnels through
-  `HabitsService`/`HabitEntriesService` — there's no group-specific service,
-  which is why those two services are the first place to look for any
-  behavior change regardless of which use case prompted it.
+- **Use cases → Backend**: every group ultimately funnels through the API's
+  `HabitsService`/`HabitEntriesService`/`HabitStatsService`, reached from the
+  BFF's resolvers over REST. Behaviour changes go in those services. A BFF
+  change is only needed when the GraphQL shape changes.
 - **Use cases → Frontend**: mostly 1:1 with a component, except Dashboard,
-  which spans three (`DashboardHeader` for aggregate stats, `HabitCard` for
+  which spans three (`StatTiles` and the sidebar's level card for aggregate stats, `HabitCard` for
   per-habit stats, `HeatmapGrid` for the contribution grid) — a change to
   the points/level formula (`gamification.util.ts`) can visibly affect all
   three at once.
@@ -87,11 +100,15 @@ graph TD
   [use-cases.md](use-cases.md): the backend query (`habitEntries`) exists,
   nothing renders it yet.
 
+- **Journaling is its own island.** `JournalEntry` has no relation to
+  `Habit` yet. Its only link is to itself (a feeling or action → the event
+  that triggered it). See [journal.md](journal.md).
+
 ## Planned: finance module
 
 The finance module ([finance/index.md](../finance/index.md)) is designed as a
 parallel subgraph: `Account → Transaction ← Category`, `Budget → Category`,
-served by `FinanceModule` services and `graphql/finance/`. The only edges
+served by `FinanceModule` REST controllers in `apps/api` and `graphql/finance/` in `apps/bff`. The only edges
 into the habits graph are listed in
 [finance/habits-integration.md](../finance/habits-integration.md), and they
 run one way: finance writes `HabitEntry` rows through
