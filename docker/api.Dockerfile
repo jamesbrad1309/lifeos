@@ -35,4 +35,7 @@ COPY --from=build /repo/pruned ./
 # own node_modules so it's guaranteed to exist here.
 RUN ./node_modules/.bin/prisma generate
 EXPOSE 3000
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+# `exec` makes node replace the shell as PID 1, so `docker compose stop`'s
+# SIGTERM reaches the app (graceful shutdown) instead of being swallowed by
+# sh until Docker gives up and SIGKILLs it (exit 137).
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && exec node dist/main.js"]

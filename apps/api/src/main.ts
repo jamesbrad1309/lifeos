@@ -20,6 +20,12 @@ async function bootstrap() {
   // services' logs (see common/logger/logger.ts).
   app.use(httpLogger);
 
+  // On SIGTERM/SIGINT (`docker compose stop`, redeploys) close the HTTP
+  // server and run onModuleDestroy (PrismaService disconnects) instead of
+  // being SIGKILLed after Docker's 10 s grace period. Needed in Docker in
+  // particular: as PID 1, node gets no default signal handling at all.
+  app.enableShutdownHooks();
+
   const port = config.get("API_PORT", { infer: true });
   await app.listen(port);
   logger.info({ port }, "api listening");

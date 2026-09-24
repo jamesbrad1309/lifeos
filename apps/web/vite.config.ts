@@ -9,7 +9,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/graphql": "http://localhost:4000", // apps/bff — the browser never talks to apps/api directly
+      // apps/bff — the browser never talks to apps/api directly. Defaults to a
+      // BFF started with `pnpm dev:bff`; with the backend in Docker instead,
+      // point it at the gateway: `BFF_URL=http://localhost:8080 pnpm dev:web`.
+      "/graphql": process.env.BFF_URL ?? "http://localhost:4000",
     },
   },
 });
