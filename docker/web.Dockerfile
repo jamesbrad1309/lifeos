@@ -6,6 +6,7 @@ FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/api/prisma apps/api/prisma
+COPY apps/bff/package.json apps/bff/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
 
@@ -15,5 +16,5 @@ RUN pnpm --filter web build
 
 FROM nginx:alpine AS runtime
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/web.nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

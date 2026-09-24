@@ -20,8 +20,12 @@ export const loggingPlugin: ApolloServerPlugin<GraphQLContext> = {
     return {
       async didEncounterErrors({ errors }) {
         for (const error of errors) {
-          log.error(
-            { operationName, err: { message: error.message, path: error.path } },
+          const code = error.extensions?.code;
+          // Client mistakes (bad input, missing ids) are expected traffic, so log them at warn.
+          // Everything else is a real failure.
+          const level = code === "BAD_USER_INPUT" || code === "NOT_FOUND" ? "warn" : "error";
+          log[level](
+            { operationName, code, err: { message: error.message, path: error.path } },
             "graphql operation failed",
           );
         }

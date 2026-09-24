@@ -5,13 +5,11 @@ import pinoHttp from "pino-http";
 const isProd = process.env.NODE_ENV === "production";
 
 /**
- * The one pino instance for the whole process — everything else (the Nest
- * logger adapter, the HTTP access-log middleware, the GraphQL operation
- * logger, per-service child loggers) wraps or derives from this, the same
- * way a Go service passes around one *zap.Logger (or its .Named() children)
- * instead of constructing loggers ad hoc.
+ * The one pino instance for the BFF process — same setup as apps/api's
+ * logger, so both services' output looks and parses the same.
  */
 export const logger = pino({
+  base: { service: "bff" },
   level: process.env.LOG_LEVEL ?? (isProd ? "info" : "debug"),
   transport: isProd
     ? undefined
@@ -25,22 +23,20 @@ export const logger = pino({
   },
 });
 
-/** A component-scoped child logger — e.g. `logger.child({ component: "HabitsService" })`. */
+/** A component-scoped child logger — e.g. `scopedLogger("api-client")`. */
 export function scopedLogger(component: string) {
   return logger.child({ component });
 }
 
 /**
- * Structured HTTP access logging for every REST request (method, url,
- * status, duration). The request id comes from the `x-request-id` header
- * the BFF forwards, which the gateway originally set, so an API log line
- * carries the same `reqId` as the BFF and gateway lines for that user action.
- * If the header is missing, for example on a direct call during local dev,
- * a new id is generated.
+ * HTTP access log for every request (POST /graphql, GET /health). The
+ * request id comes from the gateway's `x-request-id` when present, and is
+ * forwarded to the API by the ApiClient. That shared id ties together the
+ * gateway, BFF and API log lines for one user action.
  */
 export const httpLogger = pinoHttp({
   logger,
-  autoLogging: true,
+  autoLogging: { ignore: (req) => req.url === "/health" },
   genReqId: (req, res) => {
     const id = (req.headers["x-request-id"] as string | undefined) ?? randomUUID();
     res.setHeader("x-request-id", id);

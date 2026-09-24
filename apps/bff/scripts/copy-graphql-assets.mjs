@@ -4,9 +4,9 @@ import { cpSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const apiRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const srcDir = join(apiRoot, "src");
-const distDir = join(apiRoot, "dist");
+const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const srcDir = join(appRoot, "src");
+const distDir = join(appRoot, "dist");
 
 function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

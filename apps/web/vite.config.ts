@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/graphql": "http://localhost:3000",
+      "/graphql": "http://localhost:4000", // apps/bff — the browser never talks to apps/api directly
     },
   },
 });

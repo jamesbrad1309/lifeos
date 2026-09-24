@@ -35,6 +35,11 @@ export class HabitsService {
     return all.filter((habit) => isDueOn(habit.schedule as HabitSchedule, today));
   }
 
+  findManyByIds(ids: readonly string[]): Promise<Habit[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.prisma.habit.findMany({ where: { id: { in: [...ids] } } });
+  }
+
   async findOneOrFail(id: string): Promise<Habit> {
     const habit = await this.prisma.habit.findUnique({ where: { id } });
     if (!habit) {

@@ -4,7 +4,7 @@ import { makeExecutableSchema } from "@graphql-tools/schema";
 
 /**
  * Globs every colocated `*.schema.graphql` / `*.resolvers.js` under this
- * directory (compiled output — see nest-cli.json's `assets` copying the
+ * directory (compiled output — scripts/copy-graphql-assets.mjs copies the
  * .graphql SDL files into dist alongside the compiled resolvers). Adding a
  * new feature under graphql/<feature>/ is picked up automatically, no
  * registry to edit.
