@@ -11,7 +11,8 @@ colocated SDL and resolvers.
 apps/api/src/
 ├── finance/
 │   ├── finance.module.ts          # providers + exports for all services below
-│   ├── accounts.service.ts
+│   ├── accounts.service.ts        # setup, default account, reorder, reconcile, derived card/loan values
+│   ├── quick-log.service.ts       # quickLogContext ranking, quickLog upsert, presets
 │   ├── transactions.service.ts    # create/update/delete, transfers, filters
 │   ├── categories.service.ts      # includes seedDefaults()
 │   ├── budgets.service.ts         # budget vs actual (see budgets-and-reports.md)
@@ -131,11 +132,23 @@ export const createBalanceLoader = (prisma: PrismaService) =>
 The resolver adds `openingBalanceMinor` to the loaded sum. The same pattern
 works for `Category.spentThisMonth` and `Budget.spentMinor`.
 
+The loader sums **all** of an account's transactions, while balances are
+defined as "since `openingBalanceDate`" (see
+[account-setup.md](account-setup.md)). The two agree as long as the DTOs
+**reject any transaction dated before its account's `openingBalanceDate`**.
+Enforce that in `TransactionsService`, and the loader stays a simple
+`groupBy`.
+
 ## Seeding default categories
 
 Put `CategoriesService.seedDefaults()` in `onModuleInit` and make it a
 no-op when any category already exists. There's no separate seed script to
 remember, and it's idempotent across restarts and in Docker.
+
+The built-in **"Adjustment"** category (`isSystem: true`) is the exception.
+`reconcileAccount` depends on it, so **upsert it on every start** rather
+than only when the table is empty. Otherwise a database that already has
+categories never gets it.
 
 ## Logging
 

@@ -1,6 +1,7 @@
 # Use Cases
 
-What the habit tracker actually needs to do, driving the data model
+What the habit tracker actually needs to do (finance use cases live in
+[finance/use-cases.md](../finance/use-cases.md)), driving the data model
 ([habit-data-model.md](habit-data-model.md)) and the GraphQL schema
 ([graphql-bff.md](../backend/graphql-bff.md)). **Status**: ✅ built · ⬜ not built
 yet, as of this doc's last edit. Re-verify against the code before trusting
@@ -26,7 +27,8 @@ improves UX · `2` edge case / power-user · `1` speculative.
 | Routines & structure | 0 | 4 | Habit stacking / routines (3) |
 | Insights | 0 | 4 | Best / worst weekday per habit (3) |
 | Journaling & mood | 0 | 3 | Daily mood / energy check-in (3) |
-| Cross-module (habits × finance) | 0 | 4 | "No-spend day" habit auto-checked from transactions (3) |
+| Cross-module (habits × finance) | 0 | 5 | "No-spend day" habit auto-checked from transactions (3) |
+| **Finance** (separate doc) | 0 | 50 | Money setup and quick log, see [finance/use-cases.md](../finance/use-cases.md) |
 
 ## Use cases
 
@@ -72,6 +74,7 @@ improves UX · `2` edge case / power-user · `1` speculative.
 |  | ⬜ | **Mood overlay on heatmaps**: tint a habit's heatmap by that day's mood | 1 | Join the mood habit's entries onto `Habit.heatmap` by date |
 | **Cross-module (habits × finance)** | ⬜ | **"No-spend day" habit auto-checked from transactions** | 3 | Finance upserts `HabitEntry`, see [habits-integration.md §1](../finance/habits-integration.md#1-no-spend-day-habit-auto-checked) |
 |  | ⬜ | **Savings-goal contributions count as check-ins** ("save £10/day") | 3 | `SavingsGoal.habitId`, see [habits-integration.md §2](../finance/habits-integration.md#2-savings-goal-as-a-habit) |
+|  | ⬜ | **"Log today's spending" habit**: an evening habit that opens quick log and counts as done once anything is logged that day | 3 | Auto-checked like no-spend days; see [habits-integration.md §5](../finance/habits-integration.md#5-log-todays-spending-habit) |
 |  | ⬜ | **Cost of a habit**: link a habit to a spending category ("coffee", "gym") and show spend next to the streak | 2 | `Habit.linkedSpendMinor(month)`, see [habits-integration.md §3](../finance/habits-integration.md#3-cost-of-a-habit) |
 |  | ⬜ | **Unified "LifeOS level"**: XP from both habits and financial discipline (staying under budget) | 2 | Finance XP added in `gamification.util.ts`, see [habits-integration.md §4](../finance/habits-integration.md#4-unified-lifeos-xp) |
 

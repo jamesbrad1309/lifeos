@@ -5,16 +5,50 @@ It extends the root `Query`/`Mutation` in the same way `habits.schema.graphql`
 does, and reuses the `JSON` scalar from `root.schema.graphql`.
 
 ```graphql
-enum AccountType { CURRENT SAVINGS CREDIT_CARD CASH INVESTMENT LOAN }
+enum AccountType { CURRENT SAVINGS CREDIT_CARD LOAN IOU CASH INVESTMENT }
 
 type Account {
   id: ID!
   name: String!
   type: AccountType!
   currency: String!
+  institution: String
+  last4: String
+  icon: String
+  color: String
+  sortOrder: Int!
+  isDefault: Boolean!
   openingBalanceMinor: Int!
-  """openingBalanceMinor + sum of all transactions (DataLoader-batched)."""
+  openingBalanceDate: String!
+  lastReconciledAt: String
+  """openingBalanceMinor + transactions since openingBalanceDate (DataLoader-batched)."""
   balanceMinor: Int!
+
+  # Credit card
+  creditLimitMinor: Int
+  statementDay: Int
+  paymentDueDay: Int
+  minPaymentMinor: Int
+  """creditLimitMinor + balanceMinor"""
+  availableCreditMinor: Int
+  """0–1, owed / limit"""
+  utilization: Float
+  """YYYY-MM-DD, next paymentDueDay after today"""
+  nextDueDate: String
+  currentStatementSpendMinor: Int
+
+  # Credit card + loan
+  aprBps: Int
+
+  # Loan
+  monthlyPaymentMinor: Int
+  termMonths: Int
+  """YYYY-MM; null if the payment doesn't cover interest"""
+  estimatedPayoffMonth: String
+
+  # IOU
+  dueDate: String
+
   archivedAt: String
 }
 
@@ -41,6 +75,8 @@ type Transaction {
   tags: [String!]!
   transferId: ID
   isTransfer: Boolean!
+  """quick | form | import | recurring | adjustment"""
+  source: String!
 }
 
 type TransactionPage {
@@ -82,6 +118,8 @@ input TransactionFilter {
   to: String
   search: String
   includeTransfers: Boolean = true
+  """The quick-log "To review" inbox."""
+  uncategorisedOnly: Boolean = false
 }
 
 input CreateTransactionInput {
@@ -102,6 +140,34 @@ input CreateTransferInput {
   amountMinor: Int!
 }
 
+"""
+One flat input for every account type. Which fields are required for which
+type is enforced by a zod discriminated union in the DTO, because GraphQL
+has no input unions. See account-setup.md.
+"""
+input AccountInput {
+  name: String!
+  type: AccountType!
+  currency: String
+  institution: String
+  last4: String
+  icon: String
+  color: String
+  """For cards, loans and IOUs you owe: the amount owed as a POSITIVE number. The service stores it negative."""
+  currentBalanceMinor: Int!
+  """IOU only: true = you owe them (stored negative), false = they owe you."""
+  owedByMe: Boolean
+  creditLimitMinor: Int
+  statementDay: Int
+  paymentDueDay: Int
+  minPaymentMinor: Int
+  aprBps: Int
+  monthlyPaymentMinor: Int
+  loanStartDate: String
+  termMonths: Int
+  dueDate: String
+}
+
 type ImportResult { imported: Int!, skippedDuplicates: Int!, errors: [String!]! }
 
 extend type Query {
@@ -117,8 +183,13 @@ extend type Query {
 }
 
 extend type Mutation {
-  createAccount(input: JSON!): Account!
+  createAccount(input: AccountInput!): Account!
+  updateAccount(id: ID!, input: AccountInput!): Account!
   archiveAccount(id: ID!): Account!
+  setDefaultAccount(id: ID!): Account!
+  reorderAccounts(ids: [ID!]!): [Account!]!
+  """Creates one "Adjustment" transaction for the difference and sets lastReconciledAt."""
+  reconcileAccount(id: ID!, actualBalanceMinor: Int!, date: String!): Account!
   createTransaction(input: CreateTransactionInput!): Transaction!
   updateTransaction(id: ID!, input: JSON!): Transaction!
   deleteTransaction(id: ID!): Boolean!
@@ -131,6 +202,9 @@ extend type Mutation {
 
 The `JSON!` inputs above are placeholders to keep the sketch short. Give
 them real `input` types when implementing, as `CreateTransactionInput` has.
+
+Quick log has its own query and mutation (`quickLogContext`, `quickLog`),
+defined in [quick-log-implementation.md](quick-log-implementation.md).
 
 ## Notes
 

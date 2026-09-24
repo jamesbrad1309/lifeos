@@ -26,6 +26,9 @@ Each file below is a short, standalone read.
 **Finance** (planned module, not built yet)
 - [Finance module overview](finance/index.md) — scope, build order, reading order
 - [Finance use cases](finance/use-cases.md) — accounts, transactions, budgets, recurring bills, goals, reports
+- [Account setup](finance/account-setup.md) — bank accounts, credit cards and limits, loans, IOUs, reconciling
+- [Quick log](finance/quick-log.md) — logging an expense as an amount plus one tap
+- [Quick log implementation](finance/quick-log-implementation.md) — API, category ranking, one-line parser, idempotency
 - [Money handling](finance/money-handling.md) — integer minor units, currency, dates
 - [Finance data model](finance/data-model.md) — Prisma models, derived balances, transfers
 - [Finance backend module](finance/backend-module.md) — Nest module, DTOs, context wiring, DataLoaders

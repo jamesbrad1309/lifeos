@@ -64,6 +64,22 @@ XP is derived and never stored:
 XP. Keep the per-module numbers visible so it's clear where the XP came
 from.
 
+## 5. "Log today's spending" habit
+
+This turns the logging routine itself into a habit, which is the most
+direct fix for "I forget to log":
+
+- A habit with `metadata: { source: "finance.loggedToday" }`, `startTime: "21:00"`,
+  shown in the day view like any other habit.
+- Tapping it in the day view **opens quick log** in evening catch-up mode
+  (see [quick-log.md](quick-log.md)) instead of just ticking it.
+- It's auto-checked, the same way as the no-spend habit in §1, once at
+  least one `quick` or `form` transaction exists for that date. **Reconcile
+  also counts**, because updating balances is a valid way to keep finances
+  accurate.
+- The streak then rewards the logging routine, and it uses the existing
+  streak, points and heatmap code unchanged.
+
 ## Guardrails
 
 - **Never block a finance write on a habits side effect.** If the no-spend
