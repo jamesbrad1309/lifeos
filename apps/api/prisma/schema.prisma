@@ -87,3 +87,240 @@ model JournalEntry {
   @@index([date])
   @@map("journal_entries")
 }
+
+// ─── Finance ─────────────────────────────────────────────────────────────────
+// All amounts are integer minor units (pence): see docs/finance/money-handling.md.
+// Recurring rules and savings goals come in later phases
+// (docs/finance/index.md) and add their own tables then.
+
+enum AccountType {
+  CURRENT
+  SAVINGS
+  CREDIT_CARD
+  LOAN
+  /// Personal debt with a person: + = they owe you, − = you owe them.
+  IOU
+  CASH
+  INVESTMENT
+}
+
+/// Anywhere money lives or is owed. One table for every type, with nullable
+/// type-specific columns; finance/dto/account.dto.ts decides which apply.
+model Account {
+  id                  String      @id @default(uuid())
+  name                String
+  type                AccountType
+  currency            String      @default("GBP") // ISO 4217
+  /// Bank or lender name, or the person for an IOU.
+  institution         String?
+  /// Display only, never a full card number.
+  last4               String?
+  icon                String?
+  color               String?
+  sortOrder           Int         @default(0)
+  /// At most one (unarchived) account is the default; quick log uses it when
+  /// none is chosen. A partial unique index enforces it (see the migration).
+  isDefault           Boolean     @default(false)
+
+  /// Balance on the day tracking started. Owed amounts are stored negative.
+  openingBalanceMinor Int         @default(0)
+  openingBalanceDate  DateTime    @db.Date
+  lastReconciledAt    DateTime?
+
+  // Credit card
+  creditLimitMinor    Int?
+  /// 1–31, clamped to the month's length.
+  statementDay        Int?
+  paymentDueDay       Int?
+  minPaymentMinor     Int?
+
+  // Credit card + loan
+  /// APR in basis points: 1999 = 19.99%.
+  aprBps              Int?
+
+  // Loan
+  monthlyPaymentMinor Int?
+  loanStartDate       DateTime?   @db.Date
+  termMonths          Int?
+
+  // IOU
+  dueDate             DateTime?   @db.Date
+
+  archivedAt          DateTime?
+  metadata            Json        @default("{}")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  transactions  Transaction[]
+  presets       QuickPreset[]
+  monthlyTotals MonthlyTotal[]
+
+  @@map("accounts")
+}
+
+model Category {
+  id         String     @id @default(uuid())
+  name       String
+  icon       String?
+  color      String?
+  /// "expense" | "income"
+  kind       String     @default("expense")
+  parentId   String?
+  parent     Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children   Category[] @relation("CategoryTree")
+  archivedAt DateTime?
+  /// Built-in categories ("Adjustment") that reports ignore and users can't delete.
+  isSystem   Boolean    @default(false)
+  /// { aliases: string[] } for the quick-log parser; { dismissedPresetSuggestions: string[] }.
+  metadata   Json       @default("{}")
+  sortOrder  Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  transactions  Transaction[]
+  presets       QuickPreset[]
+  monthlyTotals MonthlyTotal[]
+  budgets       Budget[]
+
+  @@unique([parentId, name])
+  @@map("categories")
+}
+
+model Transaction {
+  id          String    @id @default(uuid())
+  accountId   String
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  date        DateTime  @db.Date
+  /// Negative = money out of the account.
+  amountMinor Int
+  payee       String?
+  note        String?
+  tags        String[]  @default([])
+  /// Both legs of a transfer share this id; excluded from income/expense reports.
+  transferId  String?
+  /// Hash of (account, date, amount, payee) for CSV-import dedupe.
+  importHash  String?
+  /// Client-generated id from quick log; makes retries and double taps idempotent.
+  clientId    String?   @unique
+  /// "quick" | "form" | "import" | "recurring" | "adjustment" | "transfer"
+  source      String    @default("form")
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([accountId, importHash])
+  @@index([accountId, date])
+  @@index([categoryId, date])
+  @@index([transferId])
+  @@map("transactions")
+}
+
+/// A one-tap quick-log button: "☕ Flat white £3.40". Without an amount it
+/// opens the keypad with the category already chosen.
+model QuickPreset {
+  id          String    @id @default(uuid())
+  label       String
+  emoji       String?
+  amountMinor Int?
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  /// Null → the default account.
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  payee       String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@map("quick_presets")
+}
+
+/// Pre-aggregated money in and out per (month, account, category), kept in
+/// step with `transactions` inside the same database transaction as every
+/// write (finance/monthly-totals.service.ts), so reports read a few rows
+/// instead of scanning transactions. Transfers and balance adjustments are
+/// not counted. The migration adds what Prisma can't express: a unique key
+/// on (month, accountId, categoryId) with NULLS NOT DISTINCT (a null
+/// category is the "To review" bucket) and CHECKs that no total goes negative.
+model MonthlyTotal {
+  id               String    @id @default(uuid())
+  /// Always the 1st of the month.
+  month            DateTime  @db.Date
+  accountId        String
+  account          Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Null: uncategorised. Categories are archived, never deleted, so a
+  /// delete that would orphan totals is refused rather than merged.
+  categoryId       String?
+  category         Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// Money out, as a positive amount.
+  outflowMinor     Int       @default(0)
+  /// Money in (income, refunds).
+  inflowMinor      Int       @default(0)
+  transactionCount Int       @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  /// Declared so `prisma migrate dev` treats the index as expected instead of
+  /// dropping it as drift. The real index is NULLS NOT DISTINCT, which Prisma
+  /// can't express: it's created by hand in the migrations, and
+  /// MonthlyTotalsService checks it on startup.
+  @@unique([month, accountId, categoryId], map: "monthly_totals_key")
+  @@index([month])
+  @@map("monthly_totals")
+}
+
+/// A monthly spending limit for a category, **from `month` onwards**: the
+/// limit for any month is the latest row at or before it, so a budget is set
+/// once and carries forward, while past months keep the limit they had.
+/// A row with `amountMinor = null` ends the budget from that month.
+model Budget {
+  id          String   @id @default(uuid())
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  /// Always the 1st of the month the change takes effect.
+  month       DateTime @db.Date
+  /// Positive limit; null = no budget from this month on.
+  amountMinor Int?
+  /// Carry last month's unspent amount into this one (never an overspend).
+  rollover    Boolean  @default(false)
+  /// ISO 4217: the main currency when the limit was set. Reports convert it
+  /// to the current main currency, so changing the main one doesn't turn a
+  /// £250 budget into ₫250.
+  currency    String   @default("GBP")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([categoryId, month])
+  @@map("budgets")
+}
+
+/// The currencies the user works in. Exactly one is the main currency that
+/// totals are converted into (a partial unique index enforces it, see the
+/// migration). Accounts pick their currency from this list.
+model Currency {
+  /// ISO 4217, e.g. "GBP", "VND".
+  code           String   @id
+  isMain         Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  /// The user's own rate, in main-currency units per 1 unit of this one; it
+  /// replaces the fetched rate. Cleared when the main currency changes.
+  overrideToMain Float?
+  createdAt      DateTime @default(now())
+
+  @@map("currencies")
+}
+
+/// Daily exchange rates, as units of `code` per 1 USD (the providers' pivot),
+/// so any pair converts via USD. One row per day fetched; past months
+/// convert at the rate of their time.
+model ExchangeRate {
+  date      DateTime @db.Date
+  code      String
+  perUsd    Float
+  /// Which provider it came from, for attribution and debugging.
+  source    String
+  fetchedAt DateTime @default(now())
+
+  @@id([date, code])
+  @@index([code, date])
+  @@map("exchange_rates")
+}

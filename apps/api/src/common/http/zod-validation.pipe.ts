@@ -1,5 +1,5 @@
 import { BadRequestException, type PipeTransform } from "@nestjs/common";
-import type { ZodSchema } from "zod";
+import type { ZodType, ZodTypeDef } from "zod";
 
 /**
  * Validates a request body/query against a zod DTO schema — the same schemas
@@ -7,7 +7,8 @@ import type { ZodSchema } from "zod";
  * whose `issues` the BFF turns into a BAD_USER_INPUT GraphQL error.
  */
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodSchema<T>) {}
+  /** Input is `unknown`: query-string schemas transform ("true" → true), so in ≠ out. */
+  constructor(private readonly schema: ZodType<T, ZodTypeDef, unknown>) {}
 
   transform(value: unknown): T {
     const result = this.schema.safeParse(value);

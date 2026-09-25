@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { validateEnv } from "#common/config/env";
 import { DatabaseModule } from "#common/database/database.module";
 import { HealthController } from "#common/health/health.controller";
+import { FinanceModule } from "#finance/finance.module";
 import { HabitEntriesModule } from "#habit-entries/habit-entries.module";
 import { HabitsModule } from "#habits/habits.module";
 import { JournalModule } from "#journal/journal.module";
@@ -20,6 +21,7 @@ import { JournalModule } from "#journal/journal.module";
     HabitsModule,
     HabitEntriesModule,
     JournalModule,
+    FinanceModule,
   ],
   controllers: [HealthController],
 })
