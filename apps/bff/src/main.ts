@@ -8,6 +8,7 @@ import { httpLogger, logger } from "#common/logger/logger";
 import { type GraphQLContext, buildContext } from "#graphql/context";
 import { loggingPlugin } from "#graphql/logging.plugin";
 import { executableSchema } from "#graphql/schema";
+import { uploadTransactionsCsv } from "#routes/uploads";
 
 /**
  * The GraphQL BFF: a small Express app that hosts Apollo Server and is the
@@ -26,6 +27,9 @@ async function bootstrap() {
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
+
+  // The one non-GraphQL route: a CSV upload, streamed to the API untouched.
+  app.post("/uploads/transactions-csv", uploadTransactionsCsv);
 
   const httpServer = createServer(app);
 

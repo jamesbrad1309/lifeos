@@ -82,7 +82,9 @@ export class ApiClient {
     }
 
     this.log.debug({ method, path, status: response.status, durationMs }, "api call");
-    return (await response.json()) as T;
+    // 204 No Content (and any empty body) has nothing to parse.
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 }
 

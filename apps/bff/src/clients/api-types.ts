@@ -82,3 +82,126 @@ export interface ApiJournalDaySummary {
   eventCount: number;
   emotions: string[];
 }
+
+export type ApiAccountType =
+  | "CURRENT"
+  | "SAVINGS"
+  | "CREDIT_CARD"
+  | "LOAN"
+  | "IOU"
+  | "CASH"
+  | "INVESTMENT";
+
+/** Amounts in minor units; `@db.Date` columns as "YYYY-MM-DD". */
+export interface ApiAccount {
+  id: string;
+  name: string;
+  type: ApiAccountType;
+  currency: string;
+  institution: string | null;
+  last4: string | null;
+  icon: string | null;
+  color: string | null;
+  sortOrder: number;
+  isDefault: boolean;
+  openingBalanceMinor: number;
+  openingBalanceDate: string;
+  lastReconciledAt: string | null;
+  creditLimitMinor: number | null;
+  statementDay: number | null;
+  paymentDueDay: number | null;
+  minPaymentMinor: number | null;
+  aprBps: number | null;
+  monthlyPaymentMinor: number | null;
+  loanStartDate: string | null;
+  termMonths: number | null;
+  dueDate: string | null;
+  archivedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /accounts/balances`: the balance plus derived card/loan values, null where n/a. */
+export interface ApiAccountMetrics {
+  accountId: string;
+  balanceMinor: number;
+  balanceMainMinor: number | null;
+  availableCreditMinor: number | null;
+  utilization: number | null;
+  nextDueDate: string | null;
+  currentStatementSpendMinor: number | null;
+  estimatedPayoffMonth: string | null;
+  paymentCoversInterest: boolean | null;
+}
+
+export interface ApiNetWorth {
+  netWorthMinor: number;
+  assetsMinor: number;
+  liabilitiesMinor: number;
+}
+
+export interface ApiCategory {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+  kind: string;
+  parentId: string | null;
+  archivedAt: string | null;
+  isSystem: boolean;
+  metadata: { key?: string; aliases?: string[]; dismissedPresetSuggestions?: string[] };
+  sortOrder: number;
+  createdAt: string;
+}
+
+/** `date` as "YYYY-MM-DD". */
+export interface ApiTransaction {
+  id: string;
+  accountId: string;
+  categoryId: string | null;
+  date: string;
+  amountMinor: number;
+  payee: string | null;
+  note: string | null;
+  tags: string[];
+  transferId: string | null;
+  importHash: string | null;
+  clientId: string | null;
+  source: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiTransactionPage {
+  items: ApiTransaction[];
+  nextCursor: string | null;
+}
+
+export interface ApiQuickPreset {
+  id: string;
+  label: string;
+  emoji: string | null;
+  amountMinor: number | null;
+  categoryId: string;
+  accountId: string | null;
+  payee: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface ApiQuickLogContext {
+  defaultAccountId: string | null;
+  suggestedCategories: ApiCategory[];
+  presets: ApiQuickPreset[];
+  recentPayees: { payee: string; categoryId: string | null }[];
+  toReviewCount: number;
+  lastAccountByCategory: Record<string, string>;
+}
+
+export interface ApiQuickLogResult {
+  transaction: ApiTransaction;
+  suggestPreset: boolean;
+  presetKey: string | null;
+}

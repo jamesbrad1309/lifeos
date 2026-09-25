@@ -1,0 +1,603 @@
+"""Where money lives or is owed. See docs/finance/account-setup.md."""
+enum AccountType {
+  CURRENT
+  SAVINGS
+  CREDIT_CARD
+  LOAN
+  """Personal debt with a person."""
+  IOU
+  CASH
+  INVESTMENT
+}
+
+"""
+All amounts are integer minor units (pence): £12.34 is 1234. Balances are
+signed: negative means owed (cards, loans, IOUs you owe).
+"""
+type Account {
+  id: ID!
+  name: String!
+  type: AccountType!
+  """ISO 4217, e.g. GBP."""
+  currency: String!
+  """Bank or lender name."""
+  institution: String
+  last4: String
+  icon: String
+  color: String
+  sortOrder: Int!
+  """Quick log's account when none is chosen. At most one is true."""
+  isDefault: Boolean!
+  openingBalanceMinor: Int!
+  """YYYY-MM-DD: tracking starts here."""
+  openingBalanceDate: String!
+  """ISO timestamp of the last "Update balance"."""
+  lastReconciledAt: String
+  """openingBalanceMinor + every transaction since (batched per request). In `currency`."""
+  balanceMinor: Int!
+  """The balance in the main currency at today's rate; null when there's no rate yet."""
+  balanceMainMinor: Int
+
+  # Credit card
+  creditLimitMinor: Int
+  statementDay: Int
+  paymentDueDay: Int
+  minPaymentMinor: Int
+  """creditLimitMinor + balanceMinor."""
+  availableCreditMinor: Int
+  """Owed / limit, 0–1 (above 1 when over the limit)."""
+  utilization: Float
+  """YYYY-MM-DD of the next payment due day, today included."""
+  nextDueDate: String
+  """Spending since the last statement closed, as a positive amount."""
+  currentStatementSpendMinor: Int
+
+  """Credit card and loan: APR in basis points (1999 = 19.99%)."""
+  aprBps: Int
+
+  # Loan
+  monthlyPaymentMinor: Int
+  """YYYY-MM-DD"""
+  loanStartDate: String
+  termMonths: Int
+  """YYYY-MM it's paid off at the current payment; null if it never is or there's no payment set."""
+  estimatedPayoffMonth: String
+  """False when the monthly payment doesn't cover the interest."""
+  paymentCoversInterest: Boolean
+
+  # IOU
+  """YYYY-MM-DD"""
+  dueDate: String
+
+  archivedAt: String
+}
+
+"""Converted into the main currency at today's rates."""
+type NetWorth {
+  """The main currency (ISO 4217) the figures are in."""
+  currency: String!
+  """Currencies left out for want of a rate."""
+  unconverted: [String!]!
+  netWorthMinor: Int!
+  """Sum of positive balances."""
+  assetsMinor: Int!
+  """Everything owed, as a positive amount."""
+  liabilitiesMinor: Int!
+}
+
+"""
+One flat input for every account type. Which fields are required for which
+type is enforced by the API (a zod discriminated union), because GraphQL
+has no input unions: a card needs creditLimitMinor, an IOU needs owedByMe.
+"""
+input CreateAccountInput {
+  name: String!
+  type: AccountType!
+  currency: String
+  institution: String
+  last4: String
+  icon: String
+  color: String
+  """The balance as the user sees it: for cards, loans and IOUs, the amount owed as a POSITIVE number."""
+  currentBalanceMinor: Int!
+  """The client's local today (YYYY-MM-DD). Tracking starts here."""
+  openingBalanceDate: String
+  """IOU only: true = you owe them, false = they owe you."""
+  owedByMe: Boolean
+  creditLimitMinor: Int
+  statementDay: Int
+  paymentDueDay: Int
+  minPaymentMinor: Int
+  aprBps: Int
+  monthlyPaymentMinor: Int
+  loanStartDate: String
+  termMonths: Int
+  dueDate: String
+}
+
+"""
+Replaces an account's details. There's no balance here: it changes through
+reconcileAccount. `type` must match the account's current type.
+"""
+input UpdateAccountInput {
+  name: String!
+  type: AccountType!
+  currency: String
+  institution: String
+  last4: String
+  icon: String
+  color: String
+  creditLimitMinor: Int
+  statementDay: Int
+  paymentDueDay: Int
+  minPaymentMinor: Int
+  aprBps: Int
+  monthlyPaymentMinor: Int
+  loanStartDate: String
+  termMonths: Int
+  dueDate: String
+}
+
+extend type Query {
+  """Active accounts in the user's order."""
+  accounts: [Account!]!
+  archivedAccounts: [Account!]!
+  netWorth: NetWorth!
+}
+
+extend type Mutation {
+  createAccount(input: CreateAccountInput!): Account!
+  updateAccount(id: ID!, input: UpdateAccountInput!): Account!
+  """Hides the account and its balance from net worth; transactions are kept."""
+  archiveAccount(id: ID!): Account!
+  """Restores an archived account at the end of the list. It doesn't become the default again."""
+  unarchiveAccount(id: ID!): Account!
+  setDefaultAccount(id: ID!): Account!
+  """All active account ids, in their new order."""
+  reorderAccounts(ids: [ID!]!): [Account!]!
+  """
+  "Update balance": records one Adjustment transaction for the difference
+  and sets lastReconciledAt. actualBalanceMinor is signed: negative = owed.
+  """
+  reconcileAccount(id: ID!, actualBalanceMinor: Int!, date: String!): Account!
+}
+
+# ─── Categories, transactions, quick log (phase 2) ──────────────────────────
+
+type Category {
+  id: ID!
+  name: String!
+  """An emoji."""
+  icon: String
+  color: String
+  """expense | income"""
+  kind: String!
+  """Built in (Adjustment): not offered for picking."""
+  isSystem: Boolean!
+  """Extra words the quick-log parser matches, lowercase: "latte" → Coffee."""
+  aliases: [String!]!
+  """
+  Seeded categories only: a stable id ("groceries") clients translate the
+  name by. Null for the user's own categories, which show `name` as is.
+  """
+  key: String
+}
+
+type Transaction {
+  id: ID!
+  account: Account!
+  """Null: in the "To review" inbox."""
+  category: Category
+  """YYYY-MM-DD"""
+  date: String!
+  """Negative = money out."""
+  amountMinor: Int!
+  payee: String
+  note: String
+  tags: [String!]!
+  transferId: ID
+  isTransfer: Boolean!
+  """For a transfer: the other account (where the money went, or came from)."""
+  transferAccount: Account
+  """quick | form | import | recurring | adjustment | transfer"""
+  source: String!
+  """ISO timestamp it was logged."""
+  createdAt: String!
+}
+
+type TransactionPage {
+  items: [Transaction!]!
+  """Pass as `after` for the next page; null when there are no more rows."""
+  nextCursor: String
+}
+
+input TransactionFilter {
+  accountId: ID
+  categoryId: ID
+  """YYYY-MM-DD, inclusive."""
+  from: String
+  """YYYY-MM-DD, inclusive."""
+  to: String
+  """Matches payee or note, case-insensitively."""
+  search: String
+  includeTransfers: Boolean = true
+  """The "To review" inbox."""
+  uncategorisedOnly: Boolean = false
+}
+
+input CreateTransactionInput {
+  accountId: ID!
+  categoryId: ID
+  date: String!
+  """Signed: negative = money out."""
+  amountMinor: Int!
+  payee: String
+  note: String
+  tags: [String!]
+}
+
+"""Only the fields given change; null clears categoryId, payee or note."""
+input UpdateTransactionInput {
+  accountId: ID
+  categoryId: ID
+  date: String
+  amountMinor: Int
+  payee: String
+  note: String
+  tags: [String!]
+}
+
+"""Money between two of your accounts: a card payment, savings, settling an IOU."""
+input CreateTransferInput {
+  fromAccountId: ID!
+  toAccountId: ID!
+  """YYYY-MM-DD"""
+  date: String!
+  """Positive, in the source account's currency."""
+  amountMinor: Int!
+  """Positive, in the destination's currency. Required when the currencies differ."""
+  toAmountMinor: Int
+  note: String
+  """Client-generated UUID: the same id twice records one transfer."""
+  clientId: ID
+}
+
+"""What happened (or would happen) to one row."""
+enum ImportRowStatus {
+  """Imported, or will be."""
+  NEW
+  """Already imported from an earlier file."""
+  DUPLICATE
+  """Looks like a transaction logged by hand (same account and amount, within 3 days)."""
+  MATCHED
+  """Before the account's opening balance date: already counted in it."""
+  BEFORE_OPENING
+}
+
+"""One parsed row of an uploaded CSV, as it would be imported."""
+type CsvPreviewRow {
+  """1-based line in the file."""
+  line: Int!
+  """YYYY-MM-DD"""
+  date: String!
+  """Signed, in the account's currency: negative = money out."""
+  amountMinor: Int!
+  payee: String
+  note: String
+  status: ImportRowStatus!
+  """The guessed category; null goes to "To review"."""
+  category: Category
+}
+
+"""A line of the file that couldn't be read with the mapping."""
+type CsvProblem {
+  line: Int!
+  """date | amount"""
+  reason: String!
+  value: String!
+}
+
+"""A dry run of importing an uploaded CSV with a mapping. Nothing is written."""
+type CsvImportPreview {
+  """The account's currency, which the amounts are in."""
+  currency: String!
+  """The first 200 rows; the counts cover the whole file."""
+  rows: [CsvPreviewRow!]!
+  total: Int!
+  new: Int!
+  duplicates: Int!
+  matched: Int!
+  beforeOpening: Int!
+  problems: [CsvProblem!]!
+}
+
+type ImportResult {
+  imported: Int!
+  duplicates: Int!
+  matched: Int!
+  beforeOpening: Int!
+}
+
+input CreateCategoryInput {
+  name: String!
+  icon: String
+  """expense (default) | income"""
+  kind: String
+  aliases: [String!]
+}
+
+"""A one-tap quick-log button: "☕ Flat white £3.40"."""
+type QuickPreset {
+  id: ID!
+  label: String!
+  emoji: String
+  """Null: tapping opens the keypad with the category chosen."""
+  amountMinor: Int
+  category: Category!
+  """Null: the default account."""
+  account: Account
+  payee: String
+}
+
+"""A payee seen recently, with the category it was last logged under."""
+type PayeeHint {
+  payee: String!
+  category: Category
+}
+
+"""Everything the quick-log sheet needs to open instantly."""
+type QuickLogContext {
+  defaultAccount: Account
+  """Active accounts in the user's order, for the account pill."""
+  accounts: [Account!]!
+  """Top 6 expense categories, ranked by use at this time of day."""
+  suggestedCategories: [Category!]!
+  presets: [QuickPreset!]!
+  recentPayees: [PayeeHint!]!
+  """Uncategorised transactions: the inbox badge."""
+  toReviewCount: Int!
+  """{ [categoryId]: accountId } of the last quick log in each category."""
+  lastAccountByCategory: JSON!
+}
+
+input QuickLogInput {
+  """Client-generated UUID: the same id twice logs once."""
+  clientId: ID!
+  """Positive; isIncome flips the sign."""
+  amountMinor: Int!
+  isIncome: Boolean = false
+  """Null: goes to "To review"."""
+  categoryId: ID
+  """Null: the default account."""
+  accountId: ID
+  """YYYY-MM-DD in the user's time zone; null: the server's today."""
+  date: String
+  payee: String
+  note: String
+  presetId: ID
+  """Open-to-save time, for spotting friction."""
+  durationMs: Int
+}
+
+type QuickLogPayload {
+  transaction: Transaction!
+  """Logged often enough to offer "Save as preset?"."""
+  suggestPreset: Boolean!
+  """Pass to dismissPresetSuggestion if the user says no."""
+  presetKey: String
+}
+
+input CreateQuickPresetInput {
+  label: String!
+  emoji: String
+  amountMinor: Int
+  categoryId: ID!
+  accountId: ID
+  payee: String
+}
+
+extend type Query {
+  """Active, pickable categories."""
+  categories: [Category!]!
+  """Newest first."""
+  transactions(filter: TransactionFilter, first: Int = 50, after: String): TransactionPage!
+  toReviewCount: Int!
+  """hour (0–23), dayOfWeek (0 = Sunday) and utcOffsetMinutes (Date.getTimezoneOffset()) are the user's local time."""
+  quickLogContext(hour: Int!, dayOfWeek: Int!, utcOffsetMinutes: Int = 0): QuickLogContext!
+}
+
+extend type Mutation {
+  createTransaction(input: CreateTransactionInput!): Transaction!
+  updateTransaction(id: ID!, input: UpdateTransactionInput!): Transaction!
+  """Returns the deleted ids: both legs, for a transfer."""
+  deleteTransaction(id: ID!): [ID!]!
+  """
+  What importing an uploaded CSV (POST /uploads/transactions-csv) with this
+  column mapping would do, row by row. The server parses the file.
+  """
+  previewCsvImport(uploadId: ID!, accountId: ID!, mapping: JSON!): CsvImportPreview!
+  """Imports the uploaded CSV, remembers the mapping for this bank's format, and deletes the file."""
+  commitCsvImport(uploadId: ID!, accountId: ID!, mapping: JSON!, includeMatched: Boolean = false): ImportResult!
+  """Deletes an upload without importing it."""
+  discardCsvImport(uploadId: ID!): Boolean!
+  """Both legs: [out, in]. Neither counts as spending or income."""
+  createTransfer(input: CreateTransferInput!): [Transaction!]!
+  quickLog(input: QuickLogInput!): QuickLogPayload!
+  createQuickPreset(input: CreateQuickPresetInput!): QuickPreset!
+  """Returns the deleted preset's id."""
+  deleteQuickPreset(id: ID!): ID!
+  createCategory(input: CreateCategoryInput!): Category!
+  """Never offer "Save as preset?" for this combination again."""
+  dismissPresetSuggestion(categoryId: ID!, key: String!): Boolean!
+}
+
+# ─── Reports (phase 2b), read from the monthly_totals aggregate ──────────────
+
+type CategorySpend {
+  """Null: uncategorised ("To review")."""
+  category: Category
+  """Money out minus refunds this month. Negative when refunds outweighed spending."""
+  spentMinor: Int!
+  """The same for the month before, for "vs last month"."""
+  previousSpentMinor: Int!
+  transactionCount: Int!
+}
+
+type SpendReport {
+  """YYYY-MM"""
+  month: String!
+  """The main currency every figure is converted into (each month at its own rate)."""
+  currency: String!
+  unconverted: [String!]!
+  spentMinor: Int!
+  previousSpentMinor: Int!
+  """Net money in under income categories this month."""
+  incomeMinor: Int!
+  """Biggest spend first. Transfers and balance adjustments aren't counted."""
+  categories: [CategorySpend!]!
+}
+
+extend type Query {
+  """month is YYYY-MM in the user's calendar; optionally one account only."""
+  spendByCategory(month: String!, accountId: ID): SpendReport!
+}
+
+# ─── Budgets (phase 3) ───────────────────────────────────────────────────────
+
+"""Spending against the share of the month gone."""
+enum BudgetPace {
+  """At or under pace."""
+  ON_TRACK
+  """Up to 15 points ahead of pace."""
+  CLOSE
+  """Further ahead, or over the limit."""
+  OVER
+}
+
+type BudgetLine {
+  category: Category!
+  """This month's own limit."""
+  limitMinor: Int!
+  """Unspent amount carried from last month (rollover only)."""
+  carriedMinor: Int!
+  """limit + carried."""
+  availableMinor: Int!
+  """Out minus refunds, from the monthly_totals aggregate."""
+  spentMinor: Int!
+  """available − spent; negative when over."""
+  remainingMinor: Int!
+  rollover: Boolean!
+  """YYYY-MM the limit was last set: budgets carry forward until changed."""
+  since: String!
+  pace: BudgetPace!
+  """Average monthly spend over the 3 months before, to judge the limit by."""
+  averageSpentMinor: Int!
+}
+
+type UnbudgetedSpend {
+  """Null: uncategorised."""
+  category: Category
+  spentMinor: Int!
+  averageSpentMinor: Int!
+}
+
+type BudgetTotals {
+  availableMinor: Int!
+  spentMinor: Int!
+  remainingMinor: Int!
+}
+
+type BudgetReport {
+  """YYYY-MM"""
+  month: String!
+  """The main currency every amount is in."""
+  currency: String!
+  unconverted: [String!]!
+  """0–1: how far through the month `today` is."""
+  monthProgress: Float!
+  """Furthest through its budget first."""
+  lines: [BudgetLine!]!
+  """Spending in categories with no budget this month."""
+  unbudgeted: [UnbudgetedSpend!]!
+  totals: BudgetTotals!
+}
+
+input SetBudgetInput {
+  categoryId: ID!
+  """YYYY-MM: the limit applies from this month until changed."""
+  month: String!
+  """Positive."""
+  amountMinor: Int!
+  rollover: Boolean = false
+}
+
+extend type Query {
+  """month is YYYY-MM; today (YYYY-MM-DD, the user's calendar) sets the pace."""
+  budget(month: String!, today: String): BudgetReport!
+}
+
+extend type Mutation {
+  setBudget(input: SetBudgetInput!): Boolean!
+  """No budget for the category from `month` on; earlier months keep theirs."""
+  removeBudget(categoryId: ID!, month: String!): Boolean!
+}
+
+# ─── Currencies ──────────────────────────────────────────────────────────────
+
+type Currency {
+  """ISO 4217, e.g. GBP, VND."""
+  code: String!
+  """Totals are converted into the main currency. Exactly one is main."""
+  isMain: Boolean!
+  """The user's own rate: main-currency units per 1 unit of this one."""
+  overrideToMain: Float
+  """The latest fetched rate to the main currency."""
+  marketRateToMain: Float
+  """What conversions use today: the override, else the market rate. Null: no rate yet."""
+  rateToMain: Float
+  """Accounts using it; it can't be removed while any do."""
+  accountCount: Int!
+}
+
+type RateAttribution {
+  label: String!
+  url: String!
+}
+
+type ExchangeRatesInfo {
+  """YYYY-MM-DD of the newest stored rates."""
+  date: String!
+  source: String!
+  fetchedAt: String!
+  """Credit the provider requires."""
+  attribution: RateAttribution!
+}
+
+type CurrencySettings {
+  """Main first."""
+  currencies: [Currency!]!
+  """Null before the first successful fetch."""
+  rates: ExchangeRatesInfo
+}
+
+type RatesRefresh {
+  date: String!
+  source: String!
+  currencies: Int!
+}
+
+extend type Query {
+  currencySettings: CurrencySettings!
+}
+
+extend type Mutation {
+  addCurrency(code: String!): Boolean!
+  """Fails while the currency is main or any account uses it."""
+  removeCurrency(code: String!): Boolean!
+  """Clears every rate override (they were relative to the old main)."""
+  setMainCurrency(code: String!): Boolean!
+  """Null goes back to the fetched rate."""
+  setExchangeRateOverride(code: String!, rateToMain: Float): Boolean!
+  """Fetch today's rates now."""
+  refreshExchangeRates: RatesRefresh!
+}
