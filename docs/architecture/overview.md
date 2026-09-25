@@ -19,7 +19,7 @@ Four application containers, each doing one job:
 | **bff** | `apps/bff` | GraphQL for the frontend: shapes, batches and aggregates data. **No business logic, no DB access** | gateway only |
 | **api** | `apps/api` | REST API with all domain logic (validation, streaks, points) and all database access via Prisma | bff only |
 
-In local dev there's no gateway. Vite's dev server proxies `/graphql` to the
+In local dev there's no gateway. Vite's dev server proxies `/graphql` and `/uploads` to the
 BFF on `localhost:4000` (`apps/web/vite.config.ts`), and the BFF calls the API
 on `localhost:3000`.
 

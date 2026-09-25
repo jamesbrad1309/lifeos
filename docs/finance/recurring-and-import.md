@@ -48,44 +48,95 @@ transactions are real history.
 
 ## CSV import
 
+Built: "Import CSV" on `/finance/transactions`. The file is parsed **on the
+server**; the browser never interprets it.
+
 ### Flow
 
-1. The user picks an account and a `.csv` file in the browser.
-2. The browser reads it with `file.text()` and shows the first rows so the
-   user can map columns (date, amount or debit/credit, payee, reference).
-   Store that mapping per account in `Account.metadata` so the next import
-   is one click.
-3. `importTransactionsCsv(accountId, csv, mapping)` parses, validates and
-   inserts the rows.
+```
+choose account + file
+  → POST /uploads/transactions-csv?accountId=…   (multipart, BFF → API POST /imports)
+      API stores it as <uuid>.csv, reads it once, answers { id, headers, sample, mapping }
+  → adjust the column mapping           previewCsvImport(uploadId, accountId, mapping)
+      dry run: every row's status and guessed category; nothing is written
+  → Import                              commitCsvImport(…, includeMatched)
+      inserts, remembers the mapping, deletes the file
+  (Cancel / close)                      discardCsvImport(uploadId) deletes the file
+```
+
+- **The upload is temporary.** Files live in `os.tmpdir()/lifeos-imports`
+  (directory `0700`, files `0600`), named by a server-generated UUID; the
+  client's filename is never used. Import or cancel deletes it straight
+  away, and a sweep every 15 minutes deletes anything older than an hour
+  (a closed tab, or a failed import that was never retried).
+- **Limits**: 2 MB per file (nginx `client_max_body_size`, the BFF route
+  and Nest's `FileInterceptor` all enforce it) and 5,000 rows per import.
+- **The BFF streams the upload** (`apps/bff/src/routes/uploads.ts`) to the
+  API without buffering it: 415 if it isn't multipart, 413 when too big,
+  502 if the API is down. Previews and commits are ordinary GraphQL
+  mutations.
+- **The mapping is remembered per account** in `Account.metadata.csvImport`
+  together with the file's header row. The next upload reuses it only if
+  the header row matches, so a different bank's export gets a fresh guess
+  instead of a wrong mapping.
+
+Code: `apps/api/src/finance/csv-uploads.{controller,service}.ts`,
+`csv.util.ts` (pure parsing, unit-tested), `import.service.ts` (dedupe,
+matching, categories); web `components/finance/transactions/CsvImportDialog.tsx`.
 
 ### Parsing
 
-- Use a real CSV parser (e.g. `csv-parse`, or Papa Parse in the browser).
-  Payees contain commas and quotes.
+- `csv-parse` with `bom`, `relax_column_count`, `skip_empty_lines` and
+  `trim`. Payees contain commas and quotes.
 - **Date formats vary by bank.** `03/04/2026` is 3 April in the UK and
-  March 4 in the US. Include `dateFormat` in the mapping and never guess.
-- **Amounts**: some banks use a single signed column and some use separate
-  debit and credit columns. Normalise to signed `amountMinor` with
-  `Math.round(Number(str.replace(/[^0-9.-]/g, "")) * 100)`, and use the
-  currency's exponent (see [money-handling.md](money-handling.md)).
+  March 4 in the US. The mapping carries `dateFormat`; the first guess
+  picks a format every sample row fits, preferring day-first (as the UK
+  and Vietnam write dates) when a file never shows a day above 12. The user can change it and the
+  preview updates.
+- **Amounts**: a single signed column (optionally inverted, for banks that
+  show spending as positive) or separate money-out / money-in columns.
+  `1,234.56`, `1.234,56`, `(12.00)`, `12.00 DR`, trailing minus and
+  currency symbols are all understood, using the account currency's
+  exponent (see [money-handling.md](money-handling.md)).
+- Rows that can't be read are listed with their line number and skipped;
+  they don't block the rest.
+
+### Row statuses
+
+| Status | Meaning | Imported? |
+| ------ | ------- | --------- |
+| New | Not seen before | Yes |
+| Already imported | Same `importHash` as an earlier import | No |
+| Already logged | Same account and amount as a hand-logged transaction within ±3 days (each matched once) | Only if "Also import rows that match…" is ticked |
+| Before tracking started | Dated before the account's opening balance, which already includes it | No |
 
 ### Dedupe
 
 ```ts
-importHash = sha256(`${accountId}|${date}|${amountMinor}|${normalise(payee)}|${occurrence}`)
+importHash = sha256(`${accountId}|${date}|${amountMinor}|${foldPayee(payee)}|${occurrence}`)
 ```
 
 - `occurrence` is the row's index among identical
   `(date, amount, payee)` rows in *this file*. Two genuine £3.50 coffees on
   the same day then both import, and re-importing the file still skips
   both.
-- Insert with `createMany({ data, skipDuplicates: true })`. The
-  `@@unique([accountId, importHash])` index does the work. Report
-  `skippedDuplicates = rows − inserted.count`.
+- `foldPayee` ignores case, accents, apostrophes and spacing.
+- Insert with `createManyAndReturn({ skipDuplicates: true })` in one
+  transaction with the `monthly_totals` update. The
+  `@@unique([accountId, importHash])` index settles a race between two
+  imports of the same file.
 
 ### Auto-categorisation
 
-After parsing, apply payee rules (`"TESCO*" → Groceries`) before insert.
-Rules can live in a small `CategoryRule(pattern, categoryId)` table, or as
-JSON on `Category.metadata` to begin with. A useful next step: when the
-user recategorises an imported row, offer to create a rule from its payee.
+Each row gets, in order:
+
+1. the category the same payee was last filed under (quick log, the form or
+   an earlier import);
+2. a category whose name or alias appears as whole words in the payee
+   ("TESCO STORES 3245" → Groceries, "SAINSBURY'S" → Groceries);
+3. nothing: the row lands in "To review".
+
+Money in only matches income categories and money out only expense ones.
+Still to do: user-written rules (`"TESCO*" → Groceries`), and offering to
+create one when an imported row is recategorised.
+

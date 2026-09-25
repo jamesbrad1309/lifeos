@@ -1,7 +1,61 @@
 # Budgets & Reports
 
-Everything here is **computed at query time** from `Transaction` rows, the
-same way habit streaks are. The only stored budget data is the limit itself.
+Reports read the **`monthly_totals` aggregate table**, not `Transaction`
+rows (this replaced the original "computed at query time" plan). See
+[Monthly totals](#monthly-totals-the-aggregate-table) below. The only stored
+budget data is the limit itself; its "spent" side comes from the same
+table. Budgets are built: see "Phase 3" in [index.md](index.md#whats-built)
+for how they carry forward, which differs from the per-month sketch below.
+
+## Monthly totals: the aggregate table
+
+`monthly_totals` holds one row per **(month, account, category)**:
+`outflowMinor`, `inflowMinor` (both positive) and `transactionCount`. A
+month's report is a few dozen rows however many transactions it has, and
+budgets, cash flow and month-over-month all read the same table.
+
+**Kept in step on write, atomically.** `MonthlyTotalsService.apply` is
+called with the Prisma transaction client from every transaction write
+(`TransactionsService.create/update/remove`, and reconcile), so a row and
+its totals commit together or not at all:
+
+| Write | Totals change |
+| ----- | ------------- |
+| Create | +1 in the new row's bucket |
+| Update | −1 in the old bucket, +1 in the new one (the same bucket nets out; a payee-only edit changes nothing) |
+| Delete | −1 per deleted row (both legs of a transfer) |
+
+- **Counted rows**: not transfers (`transferId` set) and not balance
+  adjustments (`source = "adjustment"`). `isCounted` is the one place this
+  rule lives in code; the migration's backfill and `rebuild` repeat it in SQL.
+- **Additions** are `INSERT … ON CONFLICT DO UPDATE SET x = x + excluded.x`,
+  so concurrent writes to the same bucket add up. The unique key is
+  `(month, accountId, categoryId) NULLS NOT DISTINCT` (Postgres 15+),
+  which makes "uncategorised" one bucket too.
+- **Removals and in-place edits** are a plain `UPDATE … SET x = x + delta`
+  and must hit exactly one row. Postgres evaluates CHECK constraints on the
+  `VALUES` row *before* `ON CONFLICT` becomes an update, so a negative
+  delta can't go through the upsert even when the row exists. A bucket that
+  reaches zero transactions is deleted.
+- **Edits and deletes lock the row first** (`SELECT … FOR UPDATE` inside the
+  transaction), so two concurrent edits or deletes of the same transaction
+  can't both subtract its old values.
+- **CHECK constraints** (every total ≥ 0, `month` is the 1st) make drift
+  fail a write loudly instead of producing wrong reports.
+- **Recovery and verification:** `POST /reports/monthly-totals/rebuild`
+  (API only, not exposed through GraphQL) recounts from `transactions` under
+  a table lock, replaces the table, and returns `{ rows, drifted }`.
+  `drifted: 0` means the totals were already right, so the same call is the
+  consistency check.
+
+Verified with a randomised concurrent stress test (120 parallel creates,
+~130 edits and deletes in concurrent waves including the same row twice,
+10 identical quick logs at once, reconciles): 0 drifted rows, and report
+totals equal to a direct SQL sum over `transactions`.
+
+**Not in the table:** anything below a month (daily spend) and
+payee-level breakdowns still query `transactions` directly, with the
+`(accountId, date)` and `(categoryId, date)` indexes.
 
 ## Month range helper
 
@@ -78,9 +132,9 @@ months). Don't store a running balance.
 
 | Query               | Implementation                                                                 |
 | ------------------- | ------------------------------------------------------------------------------ |
-| `spendByCategory`   | The same `groupBy(["categoryId"])` as above, for a single month                |
-| `cashFlow(months)`  | Raw SQL `date_trunc('month', date)` grouping. Prisma `groupBy` can't group by an expression |
-| Month-over-month    | Two `spendByCategory` calls; diff on the client                                |
+| `spendByCategory`   | **Built.** `ReportsService.spendByCategory` reads `monthly_totals` for the month and the one before; refunds reduce a category's spend (`outflow − inflow`), income categories go to `incomeMinor` |
+| `cashFlow(months)`  | Sum `inflowMinor` / `outflowMinor` per month from `monthly_totals` (no `date_trunc` over transactions needed) |
+| Month-over-month    | Built into `spendByCategory` (`previousSpentMinor` per category)               |
 | `netWorthMinor`     | Sum of the balance loader over all non-archived accounts. Liabilities are already negative |
 
 ```ts

@@ -26,9 +26,9 @@ improves UX · `2` edge case / power-user · `1` speculative.
 | Motivation & rewards | 0 | 5 | Streak freeze (3) |
 | Routines & structure | 0 | 4 | Habit stacking / routines (3) |
 | Insights | 0 | 4 | Best / worst weekday per habit (3) |
-| Journaling & mood | 6 | 4 | Which events drive which feelings (3) |
+| Journaling & mood | 7 | 4 | Which events drive which feelings (3) |
 | Cross-module (habits × finance) | 0 | 5 | "No-spend day" habit auto-checked from transactions (3) |
-| **Finance** (separate doc) | 0 | 50 | Money setup and quick log, see [finance/use-cases.md](../finance/use-cases.md) |
+| **Finance** (separate doc) | 31 | 21 | Transfers, recurring bills, CSV import (3 partly built), see [finance/use-cases.md](../finance/use-cases.md) |
 
 ## Use cases
 
@@ -72,6 +72,7 @@ improves UX · `2` edge case / power-user · `1` speculative.
 | **Journaling & mood** | ✅ | **Log what you did** (an ACTION, with optional duration) | 4 | One textarea: bulleted `/action` lines, parsed by `apps/web/src/lib/journal-syntax.ts`; saved atomically by `Mutation.createJournalEntries` |
 |  | ✅ | **Log how you felt** (a FEELING: emotion word + 1–5 intensity, optional "why") | 4 | `/feeling anxious 4/5 why…`; the slash menu autocompletes emotions from `apps/web/src/lib/emotions.ts` |
 |  | ✅ | **Log what happened** (an EVENT, tagged good / neutral / rough) | 4 | `/event … (+)` / `(=)` / `(-)` for tone |
+|  | ✅ | **Write the journal in Vietnamese** (`/làm`, `/cảm lo âu 4/5`, `/sựkiện`) | 3 | Emotions stored by English key, shown in the UI language; see [i18n.md](../frontend/i18n.md) |
 |  | ✅ | **Link a feeling or action to the event behind it** ("stressed ← deadline moved") | 3 | Indent an item under an `/event` in the same list (`triggerIndex`), or press ♥ on a saved event; stored as `JournalEntry.triggerId` (`SET NULL` on delete) |
 |  | ✅ | **Browse past days** with a week strip showing each day's dominant emotion | 3 | `Query.journalDays(from, to)`; ← / → and `t` shortcuts |
 |  | ✅ | **#tags and filters** by kind or tag within a day | 2 | `tags` parsed from `text` by the API |

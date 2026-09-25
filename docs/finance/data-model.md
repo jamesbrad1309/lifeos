@@ -206,6 +206,11 @@ model QuickPreset {
   aren't stored either. The `(accountId, date)` index keeps it fast at
   personal scale. Add a cached `balanceMinor` only if profiling shows a
   need, and update it in the same `$transaction` as the write.
+- **Report totals are the one stored aggregate.** Balances stay derived
+  (a few accounts, summed per request), but spending per month and category
+  is read from `monthly_totals`, which every transaction write updates in
+  the same database transaction. See
+  [budgets-and-reports.md](budgets-and-reports.md#monthly-totals-the-aggregate-table).
 - **Transfers are two rows with a shared `transferId`.** One row is
   negative on the source account and the other positive on the
   destination. Both are created in one `prisma.$transaction`, and deleting

@@ -43,7 +43,8 @@ Each file below is a short, standalone read.
 **Frontend**
 - [Frontend stack](frontend/stack.md) — Vite + React + TS baseline
 - [shadcn/ui setup](frontend/shadcn-setup.md) — with native `#` aliases, not `@/*`
-- [App shell](frontend/app-shell.md) — sidebar, app bar, hash-routed views, full-width page layouts
+- [App shell](frontend/app-shell.md) — sidebar, app bar, TanStack Router routes, full-width page layouts
+- [Languages](frontend/i18n.md) — English/Vietnamese: dictionaries, locale-aware money and dates, data that has a language
 
 **Backend**
 - [GraphQL BFF](backend/graphql-bff.md) — `apps/bff`: Express + Apollo, resolvers call the API over REST, DataLoaders, error mapping

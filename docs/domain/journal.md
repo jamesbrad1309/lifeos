@@ -112,5 +112,17 @@ keyboard shortcuts (`d` / `f` / `h` start an entry of that kind, ← / →
 change day, `t` jumps to today). Deleting shows an **Undo** toast for 5 s
 instead of asking for confirmation (`hooks/useUndoableDelete.ts`).
 
+The shown day is in the URL (`routes/journal.tsx`): `/journal` is always
+today, and a past day is `/journal?date=2026-09-24`, so back/forward steps
+through the days you visited and a day can be bookmarked. Future and
+malformed dates show today.
+
+**In Vietnamese** the commands are `/làm`, `/cảm` and `/sựkiện` (accents
+optional: `/lam`, `/cam`, `/sukien`), and emotions can be written in
+Vietnamese (`/cảm lo âu 4/5`). Emotions are always stored by their English
+key (`anxious`) and shown in the current language; every language's words
+parse whatever the UI language is. See [i18n.md](../frontend/i18n.md).
+Parse problems are codes (`ParseIssue.code`) that the composer words.
+
 Dates use the browser's local calendar (`lib/dates.ts`), so an entry written
 at 23:30 belongs to today, not to tomorrow in UTC.

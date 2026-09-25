@@ -1,6 +1,8 @@
 # Quick Log: Implementation
 
 How the backend and frontend support the UX in [quick-log.md](quick-log.md).
+This is built; [index.md](index.md#whats-built) lists where the build
+differs from the sketches below.
 
 ## One query to open, one mutation to save
 

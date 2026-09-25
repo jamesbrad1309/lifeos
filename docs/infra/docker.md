@@ -4,8 +4,9 @@ Three multi-stage Dockerfiles (api, bff, web), an nginx **gateway**, and
 `docker-compose.yml` to run everything:
 
 ```
-browser → :8080 gateway ─┬─ /graphql → bff:4000 → api:3000 → postgres:5432
-                         └─ /*       → web:80 (static SPA)
+browser → :8080 gateway ─┬─ /graphql  → bff:4000 → api:3000 → postgres:5432
+                         ├─ /uploads/ → bff:4000 (streamed file uploads, e.g. CSV import)
+                         └─ /*        → web:80 (static SPA)
 ```
 
 ```bash
@@ -103,11 +104,11 @@ custom image to build. It:
 
 | Does | How |
 | ---- | --- |
-| Routes `/graphql` → `bff:4000` and everything else → `web:80` | `upstream` blocks; keepalive connections to the BFF |
+| Routes `/graphql` and `/uploads/` → `bff:4000`, everything else → `web:80` | `upstream` blocks; keepalive connections to the BFF. `/uploads/` has `proxy_request_buffering off`, so files stream through |
 | Assigns a **request id** | Keeps the client's `X-Request-Id` or generates `$request_id`; forwards it upstream and returns it in the response |
 | Writes a **JSON access log** | `reqId`, status, duration, upstream time, the same field style as the pino logs |
-| **Rate-limits** `/graphql` | 20 req/s per IP with a burst of 40; returns 429 |
-| Basic hardening | 1 MB body limit, gzip, `nosniff`, `Referrer-Policy` |
+| **Rate-limits** `/graphql` and `/uploads/` | 20 req/s per IP (burst 40 for GraphQL, 10 for uploads); returns 429 |
+| Basic hardening | 2 MB body limit (the CSV upload cap; the BFF keeps GraphQL bodies to 1 MB), gzip, `nosniff`, `Referrer-Policy` |
 | Health | `GET /healthz`, answered by nginx itself |
 
 ## Startup order and healthchecks
@@ -141,7 +142,7 @@ and one API access line per REST call, all with `trace-me`. See
   Compose reuses it, and new code never reaches the containers. Use
   `docker compose up --build` after changing code.
 - **502 on `localhost:5173`.** That's the Vite dev server, not Docker. It
-  proxies `/graphql` to `localhost:4000`, which isn't published when the BFF
+  proxies `/graphql` and `/uploads` to `localhost:4000`, which isn't published when the BFF
   runs in Docker. Open `http://localhost:8080` instead, or point the dev
   server at the gateway: `BFF_URL=http://localhost:8080 pnpm dev:web`.
 

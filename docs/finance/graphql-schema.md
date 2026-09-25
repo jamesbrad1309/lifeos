@@ -1,6 +1,8 @@
 # Finance GraphQL Schema
 
 This is the SDL sketch for `apps/bff/src/graphql/finance/finance.schema.graphql`.
+The account part is built; the real file is the source of truth for it, and
+[index.md](index.md#whats-built) lists where it differs from this sketch.
 The resolvers call finance REST endpoints on the API (see
 [backend-module.md](backend-module.md#rest-endpoints-and-bff-wiring)).
 It extends the root `Query`/`Mutation` in the same way `habits.schema.graphql`
@@ -197,7 +199,11 @@ extend type Mutation {
   deleteTransaction(id: ID!): Boolean!
   createTransfer(input: CreateTransferInput!): [Transaction!]!
   upsertBudget(categoryId: ID!, month: String!, amountMinor: Int!): BudgetLine!
-  importTransactionsCsv(accountId: ID!, csv: String!, mapping: JSON!): ImportResult!
+  # CSV import: the file itself is uploaded to POST /uploads/transactions-csv
+  # (multipart, not GraphQL); these act on that upload by id.
+  previewCsvImport(uploadId: ID!, accountId: ID!, mapping: JSON!): CsvImportPreview!
+  commitCsvImport(uploadId: ID!, accountId: ID!, mapping: JSON!, includeMatched: Boolean = false): ImportResult!
+  discardCsvImport(uploadId: ID!): Boolean!
   createSavingsGoal(input: JSON!): SavingsGoal!
 }
 ```

@@ -105,7 +105,7 @@ Its controllers expose resource-shaped endpoints, for example:
 
 | Endpoint | Used by |
 | -------- | ------- |
-| `GET /accounts`, `POST /accounts`, `PATCH /accounts/:id`, `POST /accounts/:id/reconcile` | Money setup |
+| `GET /accounts`, `POST /accounts`, `PUT /accounts/:id`, `POST /accounts/:id/reconcile` (built; full list in [index.md](index.md#whats-built)) | Money setup |
 | `GET /accounts/balances?ids=a,b` | **Batch**: the BFF's `accountBalance` loader |
 | `GET /transactions?…filter&cursor`, `POST /transactions`, `DELETE /transactions/:id` | Transaction list, undo |
 | `POST /transfers` | Transfers, card payments |

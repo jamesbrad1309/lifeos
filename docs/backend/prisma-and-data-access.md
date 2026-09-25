@@ -108,3 +108,25 @@ recreate columns to resolve a diff it can't express as a safe migration.
    `"YYYY-MM-DD"` explicitly (`toEntryDto` in `habit-entries.controller.ts`).
    Otherwise they arrive as `"2026-09-24T00:00:00.000Z"`, a UTC-midnight
    instant that is a day off in negative-offset time zones.
+
+## Hand-written indexes must be declared in the schema
+
+`prisma migrate dev` diffs the database against `schema.prisma` and
+"fixes" anything it doesn't know about. A unique index created by hand in a
+migration (because Prisma can't express it, e.g. `NULLS NOT DISTINCT`) is
+seen as drift and **dropped in the next generated migration**. This happened
+to `monthly_totals_key` in `add_budgets`, and every transaction write failed
+until `restore_monthly_totals_key` put it back.
+
+- Declare the index in the schema under the same name, e.g.
+  `@@unique([month, accountId, categoryId], map: "monthly_totals_key")`.
+  Prisma then treats it as expected; the parts it can't express
+  (`NULLS NOT DISTINCT`) stay in the hand-written SQL.
+- Partial indexes (`… WHERE …`) aren't affected: Prisma ignores them.
+- **Read the generated migration before applying it.** Check for `DROP`s you
+  didn't ask for:
+  `prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script`
+  should print "empty migration" when the schema and database agree.
+- Services that depend on such an index can check it on startup
+  (`MonthlyTotalsService.onModuleInit`), so a lost index stops the API
+  instead of failing every write.

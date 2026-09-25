@@ -43,9 +43,16 @@ queries with the components that use them; generate typed hooks from the
 backend schema with GraphQL Code Generator so a schema change is a
 compile-time error in `apps/web`, not a runtime one.
 
+## Tests
+
+Vitest, for pure logic: `pnpm --filter web test`. Tests sit next to the
+module they cover (`lib/quick-log-parse.test.ts`, `lib/money.test.ts`).
+The parser is tested as a table of `input → expected` cases; add a row
+when it learns something new.
+
 ## What's intentionally deferred to other docs
 
-- Page layout (sidebar, app bar, hash-routed views) — see
+- Page layout and routing (sidebar, app bar, TanStack Router) — see
   [app-shell.md](app-shell.md).
 - Import aliases (`#components/*`, not `@/*`) — see
   [typescript-import-aliases.md](../shared/typescript-import-aliases.md).

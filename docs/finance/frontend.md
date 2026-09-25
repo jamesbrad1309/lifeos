@@ -6,16 +6,15 @@ shadcn/ui, Tailwind and `#` import aliases.
 
 ## Navigation
 
-`App.tsx` currently switches between `"dashboard"` and `"day"` with
-`useState<View>`. Finance adds a third top-level area. At that point it's
-worth moving to a router so URLs like `/finance/transactions?month=2026-09`
-can be shared and bookmarked. If routing waits, add a `"finance"` value to
-`View` and keep finance sub-tabs in local state.
+The web app uses TanStack Router ([app-shell.md](../frontend/app-shell.md)).
+Finance routes live under `src/routes/finance/`: `/finance/accounts` is
+Money setup, and `/finance` redirects there until an overview exists. Future
+screens follow the same shape, with filters as validated search params, e.g.
+`/finance/transactions?month=2026-09`.
 
 Quick log's deep link (`/log?amount=3.40&category=coffee`, see
-[quick-log.md](quick-log.md)) is the one piece that **requires** URL
-handling. Without a router, read `window.location` once on startup and open
-the sheet.
+[quick-log.md](quick-log.md)) can be a route whose `validateSearch` reads
+the amount and category and opens the sheet.
 
 Suggested finance screens:
 
@@ -77,9 +76,19 @@ toast).
 - **Amount input**: use `inputMode="decimal"` with a separate "Expense /
   Income" toggle for the sign. People type "12.50", not "-1250". Convert on
   submit.
-- Show outflows in the default foreground colour and inflows in green.
-  Avoid making every expense red, because a list where most rows are red
-  looks alarming.
+- **Gain or loss is coloured.** `<Amount minor currency />`
+  (`components/finance/Amount.tsx`) shows money in as green `+£12.50` and
+  money out as red `−£12.50`. The sign is always there, so the meaning
+  never rests on colour alone. Use `tone="neutral"` for transfers: money
+  moving between your own accounts is neither.
+- For numbers that aren't a transaction, use `moneyToneClass()` or
+  `MONEY_IN_CLASS` / `MONEY_OUT_CLASS`:
+  - balances stay plain unless they're owed (cards, loans, "you owe") or
+    overdrawn, which are red; money someone owes you is green;
+  - net worth and group subtotals are red only when negative;
+  - spending compared with last month: more is red, less is green;
+  - a budget that's over is red;
+  - the reconcile adjustment is signed and coloured.
 
 ## Apollo
 
