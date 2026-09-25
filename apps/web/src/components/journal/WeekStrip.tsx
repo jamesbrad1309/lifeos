@@ -1,9 +1,17 @@
 import { useQuery } from "@apollo/client/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#components/ui/button";
 import { JOURNAL_DAYS_QUERY } from "#graphql/journal";
 import type { JournalDay, JournalDaysData } from "#graphql/types";
-import { addDays, fromIsoDate, startOfWeek, todayIsoDate } from "#lib/dates";
+import {
+  addDays,
+  formatLongDate,
+  formatWeekday,
+  fromIsoDate,
+  startOfWeek,
+  todayIsoDate,
+} from "#lib/dates";
 import { emotionFor } from "#lib/emotions";
 import { cn } from "#lib/utils";
 
@@ -31,6 +39,7 @@ interface Props {
  * are visible at a glance.
  */
 export function WeekStrip({ selected, onSelect }: Props) {
+  const { t } = useTranslation();
   const today = todayIsoDate();
   const from = startOfWeek(selected);
   const to = addDays(from, 6);
@@ -44,7 +53,7 @@ export function WeekStrip({ selected, onSelect }: Props) {
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Previous week"
+        aria-label={t("common.previousWeek")}
         onClick={() => onSelect(addDays(selected, -7))}
       >
         <ChevronLeft className="size-4" />
@@ -63,11 +72,7 @@ export function WeekStrip({ selected, onSelect }: Props) {
               type="button"
               disabled={isFuture}
               aria-current={isSelected ? "date" : undefined}
-              aria-label={d.toLocaleDateString(undefined, {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-              })}
+              aria-label={formatLongDate(d)}
               onClick={() => onSelect(date)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-xs transition-colors disabled:opacity-40",
@@ -77,9 +82,7 @@ export function WeekStrip({ selected, onSelect }: Props) {
                 date === today && !isSelected && "border-border",
               )}
             >
-              <span className="opacity-70">
-                {d.toLocaleDateString(undefined, { weekday: "short" })}
-              </span>
+              <span className="opacity-70">{formatWeekday(d)}</span>
               <span className="text-sm font-semibold">{d.getDate()}</span>
               <span className="flex h-5 items-center text-base leading-none" aria-hidden>
                 {emoji ?? ""}
@@ -103,7 +106,7 @@ export function WeekStrip({ selected, onSelect }: Props) {
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Next week"
+        aria-label={t("common.nextWeek")}
         disabled={to >= today}
         onClick={() => {
           const next = addDays(selected, 7);

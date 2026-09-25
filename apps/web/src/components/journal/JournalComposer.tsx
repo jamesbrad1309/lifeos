@@ -1,6 +1,7 @@
 import { useMutation } from "@apollo/client/react";
 import { CornerDownRight, X } from "lucide-react";
 import { type Ref, useImperativeHandle, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { SlashTextarea, type SlashTextareaHandle } from "#components/journal/SlashTextarea";
 import { Button } from "#components/ui/button";
 import {
@@ -9,22 +10,18 @@ import {
   UPDATE_JOURNAL_ENTRY_MUTATION,
 } from "#graphql/journal";
 import type { JournalEntry, JournalEntryDraft, JournalEntryKind } from "#graphql/types";
+import { useSyntaxLanguage } from "#hooks/useSyntaxLanguage";
 import { formatDuration, nowTime, todayIsoDate } from "#lib/dates";
-import { INTENSITY_LABELS, emotionFor } from "#lib/emotions";
+import { emotionFor } from "#lib/emotions";
 import { KIND_BY_ID } from "#lib/journal-kinds";
 import {
   type ParsedItem,
-  SLASH_COMMANDS,
+  commandFor,
+  emotionName,
   parseJournalText,
   serializeEntry,
 } from "#lib/journal-syntax";
-import { cn } from "#lib/utils";
-
-const PLACEHOLDER = `- /event Client moved the deadline (-)
-  - /feeling stressed 4/5 not sure we can ship
-- /action went for a walk 20m`;
-
-const TONE_LABEL = { POSITIVE: "👍 good", NEUTRAL: "😐 neutral", NEGATIVE: "👎 rough" } as const;
+import { capitalizeFirst, cn } from "#lib/utils";
 
 /** Lets JournalView drive the composer from shortcuts and an event's "How did it feel?" button. */
 export interface ComposerHandle {
@@ -56,8 +53,10 @@ function toDraft(item: ParsedItem, date: string, time: string | null): JournalEn
 }
 
 export function JournalComposer({ date, entry, onDone, ref }: Props) {
+  const { t } = useTranslation();
+  const language = useSyntaxLanguage();
   const editing = entry !== undefined;
-  const [text, setText] = useState(() => (entry ? serializeEntry(entry) : ""));
+  const [text, setText] = useState(() => (entry ? serializeEntry(entry, language) : ""));
   /** Set by an event's "How did it feel?": top-level feelings/actions get linked to it. */
   const [linkTo, setLinkTo] = useState<{ id: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +73,7 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
   const saving = creating || updating;
 
   const { items, issues } = parseJournalText(text);
-  const editProblem =
-    editing && items.length > 1 ? "Editing changes one entry. Keep it to a single line." : null;
+  const editProblem = editing && items.length > 1 ? t("journal.issues.editOneLine") : null;
   const hasProblems = issues.length > 0 || editProblem !== null;
   const empty = items.length === 0 && issues.length === 0;
 
@@ -85,8 +83,7 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
   useImperativeHandle(ref, () => ({
     start(kind, nextLinkTo) {
       if (nextLinkTo) setLinkTo(nextLinkTo);
-      const word = SLASH_COMMANDS.find((c) => c.kind === kind)?.word;
-      const line = `- /${word} `;
+      const line = `- /${commandFor(kind, language)} `;
       // Drop a trailing empty bullet before appending the new item.
       const kept = text.replace(/\n?[ \t]*-?[ \t]*$/, "");
       textareaRef.current?.setValue(kept ? `${kept}\n${line}` : line);
@@ -125,7 +122,7 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
       // Ready for the next list, focus kept.
       textareaRef.current?.setValue("- ");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save. Try again.");
+      setError(err instanceof Error ? err.message : t("common.couldntSave"));
     }
   }
 
@@ -135,12 +132,15 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
         <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-xs">
           <CornerDownRight className="size-3.5 shrink-0 text-amber-600" />
           <span className="truncate text-muted-foreground">
-            New feelings and actions will be linked to{" "}
-            <span className="font-medium text-foreground">“{linkTo.text}”</span>
+            <Trans
+              i18nKey="journal.composer.linkedTo"
+              values={{ text: linkTo.text }}
+              components={{ b: <span className="font-medium text-foreground" /> }}
+            />
           </span>
           <button
             type="button"
-            aria-label="Don't link"
+            aria-label={t("journal.composer.dontLink")}
             onClick={() => setLinkTo(null)}
             className="ml-auto rounded p-0.5 hover:bg-accent"
           >
@@ -157,12 +157,18 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
         onCancel={onDone}
         multiline={!editing}
         autoFocus={editing}
-        placeholder={editing ? "/action …" : PLACEHOLDER}
-        aria-label={editing ? "Edit entry" : "Journal entries"}
+        language={language}
+        placeholder={
+          editing ? `/${commandFor("ACTION", language)} …` : t("journal.composer.placeholder")
+        }
+        aria-label={editing ? t("journal.composer.editEntry") : t("journal.composer.entries")}
       />
 
       {items.length > 0 && !editing && (
-        <ul className="flex flex-col gap-1 rounded-md bg-muted/50 p-2" aria-label="Preview">
+        <ul
+          className="flex flex-col gap-1 rounded-md bg-muted/50 p-2"
+          aria-label={t("journal.composer.preview")}
+        >
           {items.map((item) => (
             <PreviewRow
               key={item.line}
@@ -183,9 +189,15 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
         <ul className="flex flex-col gap-0.5 text-xs text-destructive">
           {editProblem && <li>{editProblem}</li>}
           {issues.map((issue) => (
-            <li key={`${issue.line}-${issue.message}`}>
-              {editing ? "" : `Line ${issue.line + 1}: `}
-              {issue.message}
+            <li key={`${issue.line}-${issue.code}`}>
+              {editing ? "" : t("journal.issues.line", { line: issue.line + 1 })}
+              {t(`journal.issues.${issue.code}`, {
+                action: commandFor("ACTION", language),
+                feeling: commandFor("FEELING", language),
+                event: commandFor("EVENT", language),
+                example: emotionName("anxious", language),
+                ...issue.params,
+              })}
             </li>
           ))}
         </ul>
@@ -194,25 +206,29 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          <Kbd>/</Kbd> action, feeling or event ·{" "}
+          <Kbd>/</Kbd> {t("journal.composer.hintSlash")} ·{" "}
           {editing ? (
             ""
           ) : (
             <>
-              <Kbd>Tab</Kbd> nests under an event ·{" "}
+              <Kbd>Tab</Kbd> {t("journal.composer.hintTab")} ·{" "}
             </>
           )}
-          optional <Kbd>20m</Kbd> <Kbd>4/5</Kbd> <Kbd>(+)</Kbd> <Kbd>(-)</Kbd> <Kbd>@9:30</Kbd>{" "}
-          <Kbd>#tag</Kbd>
+          {t("journal.composer.hintOptional")} <Kbd>20m</Kbd> <Kbd>4/5</Kbd> <Kbd>(+)</Kbd>{" "}
+          <Kbd>(-)</Kbd> <Kbd>@9:30</Kbd> <Kbd>#tag</Kbd>
         </p>
         <div className="ml-auto flex items-center gap-2">
           {editing && (
             <Button type="button" variant="ghost" size="sm" onClick={onDone}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
           <Button type="button" size="sm" disabled={saving || empty} onClick={() => void submit()}>
-            {editing ? "Save" : `Add${items.length > 1 ? ` ${items.length}` : ""}`}
+            {editing
+              ? t("common.save")
+              : items.length > 1
+                ? t("journal.composer.addCount", { count: items.length })
+                : t("journal.composer.add")}
             <span className="text-[10px] opacity-60">{editing ? "↵" : "⌘↵"}</span>
           </Button>
         </div>
@@ -223,6 +239,8 @@ export function JournalComposer({ date, entry, onDone, ref }: Props) {
 
 /** One parsed line, shown as it will be saved, so the syntax is never taken on faith. */
 function PreviewRow({ item, trigger }: { item: ParsedItem; trigger: string | null }) {
+  const { t } = useTranslation();
+  const language = useSyntaxLanguage();
   const config = KIND_BY_ID[item.kind];
   const Icon = config.icon;
   const emotion = item.emotion ? emotionFor(item.emotion) : null;
@@ -240,18 +258,18 @@ function PreviewRow({ item, trigger }: { item: ParsedItem; trigger: string | nul
         <Icon className="size-3" />
       </span>
       {emotion && (
-        <span className="shrink-0 font-medium capitalize">
-          {emotion.emoji} {emotion.name}
+        <span className="shrink-0 font-medium">
+          {emotion.emoji} {capitalizeFirst(emotionName(emotion.name, language))}
           {item.intensity !== null && item.intensity !== 3 && (
             <span className="ml-1 font-normal lowercase text-muted-foreground">
-              ({INTENSITY_LABELS[item.intensity - 1]})
+              ({t("journal.intensity", { returnObjects: true })[item.intensity - 1]})
             </span>
           )}
         </span>
       )}
       <span className="truncate">{item.text}</span>
       {item.durationMinutes && <Tag>{formatDuration(item.durationMinutes)}</Tag>}
-      {item.tone && <Tag>{TONE_LABEL[item.tone]}</Tag>}
+      {item.tone && <Tag>{t(`journal.tones.${item.tone}`)}</Tag>}
       {item.time && <Tag>{item.time}</Tag>}
       {trigger && (
         <span className="ml-auto flex shrink-0 items-center gap-1 text-muted-foreground">

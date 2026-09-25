@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { Checkbox } from "#components/ui/checkbox";
 import { Progress } from "#components/ui/progress";
@@ -53,6 +54,7 @@ function HabitBlock({ habit, top }: { habit: Habit; top: number }) {
 }
 
 function AnytimeRow({ habit }: { habit: Habit }) {
+  const { t } = useTranslation();
   const [upsertEntry] = useMutation(UPSERT_HABIT_ENTRY_MUTATION, {
     refetchQueries: [{ query: HABITS_QUERY }, { query: DASHBOARD_STATS_QUERY }],
   });
@@ -87,7 +89,9 @@ function AnytimeRow({ habit }: { habit: Habit }) {
         {habit.name}
       </label>
       {habit.currentStreak > 0 && (
-        <span className="text-xs text-muted-foreground">🔥 {habit.currentStreak}d</span>
+        <span className="text-xs text-muted-foreground">
+          🔥 {t("habits.tiles.days", { count: habit.currentStreak })}
+        </span>
       )}
     </li>
   );
@@ -102,9 +106,10 @@ function AnytimeRow({ habit }: { habit: Habit }) {
  * on a Tuesday.
  */
 export function DayCalendar() {
+  const { t } = useTranslation();
   const { data, loading, error } = useQuery<HabitsData>(HABITS_QUERY);
 
-  if (loading) return <p className="text-muted-foreground">Loading…</p>;
+  if (loading) return <p className="text-muted-foreground">{t("common.loading")}</p>;
   if (error) return <p className="text-destructive">{error.message}</p>;
 
   const today = new Date();
@@ -127,12 +132,12 @@ export function DayCalendar() {
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       <Card className="order-2 lg:order-1">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Schedule</CardTitle>
+          <CardTitle className="text-base">{t("habits.today.schedule")}</CardTitle>
         </CardHeader>
         <CardContent>
           {timed.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No timed habits today. Give a habit a start time (Edit → Start time) to place it here.
+              {t("habits.today.noTimed")}
             </p>
           ) : (
             <div className="relative" style={{ height: hours.length * HOUR_HEIGHT }}>
@@ -176,12 +181,12 @@ export function DayCalendar() {
       <div className="order-1 flex flex-col gap-4 lg:sticky lg:top-0 lg:order-2">
         <Card>
           <CardContent className="flex flex-col gap-2 p-4">
-            <p className="text-sm text-muted-foreground">Today's progress</p>
+            <p className="text-sm text-muted-foreground">{t("habits.today.progress")}</p>
             <p className="text-2xl font-semibold tabular-nums">
               {done}
               <span className="text-base font-normal text-muted-foreground">
                 {" "}
-                / {dueToday.length} done
+                {t("habits.today.doneOf", { total: dueToday.length })}
               </span>
             </p>
             <Progress value={pct} className="h-1.5" />
@@ -190,14 +195,14 @@ export function DayCalendar() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Anytime today</CardTitle>
+            <CardTitle className="text-base">{t("habits.today.anytime")}</CardTitle>
           </CardHeader>
           <CardContent>
             {anytime.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {dueToday.length === 0
-                  ? "Nothing scheduled for today."
-                  : "Everything today has a time."}
+                  ? t("habits.today.nothingScheduled")
+                  : t("habits.today.allTimed")}
               </p>
             ) : (
               <ul className="-mx-2 flex flex-col">

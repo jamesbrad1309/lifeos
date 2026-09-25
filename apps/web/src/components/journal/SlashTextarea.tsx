@@ -1,8 +1,9 @@
 import { type Ref, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { caretCoordinates } from "#lib/caret";
 import { KIND_BY_ID } from "#lib/journal-kinds";
-import { type Suggestion, suggestionsAt } from "#lib/journal-syntax";
-import { cn } from "#lib/utils";
+import { type Suggestion, type SyntaxLanguage, suggestionsAt } from "#lib/journal-syntax";
+import { capitalizeFirst, cn } from "#lib/utils";
 
 const MENU_WIDTH = 288;
 const BULLET = /^(\s*)([-*•]\s+)?/;
@@ -24,6 +25,8 @@ interface Props {
   autoFocus?: boolean;
   placeholder?: string;
   "aria-label": string;
+  /** Which language the menu offers commands and emotion words in. */
+  language?: SyntaxLanguage;
   ref?: Ref<SlashTextareaHandle>;
 }
 
@@ -41,8 +44,10 @@ export function SlashTextarea({
   autoFocus = false,
   placeholder,
   "aria-label": ariaLabel,
+  language = "en",
   ref,
 }: Props) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   const [caret, setCaret] = useState(0);
@@ -54,7 +59,8 @@ export function SlashTextarea({
   const menuId = useId();
   const caretPlaced = useRef(false);
 
-  const suggestions = focused && dismissedFor !== value ? suggestionsAt(value, caret) : null;
+  const suggestions =
+    focused && dismissedFor !== value ? suggestionsAt(value, caret, language) : null;
   const activeIndex = suggestions ? Math.min(active, suggestions.items.length - 1) : 0;
 
   function update(next: string, nextCaret: number) {
@@ -244,7 +250,11 @@ export function SlashTextarea({
           id={menuId}
           // biome-ignore lint/a11y/useSemanticElements: a <select> can't anchor at the caret
           role="listbox"
-          aria-label={suggestions.items[0].type === "command" ? "Entry type" : "Emotion"}
+          aria-label={
+            suggestions.items[0].type === "command"
+              ? t("journal.composer.entryType")
+              : t("journal.composer.emotion")
+          }
           className="absolute z-20 overflow-hidden rounded-lg border bg-background p-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left, width: MENU_WIDTH }}
         >
@@ -274,16 +284,16 @@ export function SlashTextarea({
                   <span aria-hidden className="text-base">
                     {item.emotion.emoji}
                   </span>
-                  <span className="capitalize">{item.label}</span>
+                  <span>{capitalizeFirst(item.label)}</span>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {item.emotion.valence}
+                    {t(`journal.valence.${item.emotion.valence}`)}
                   </span>
                 </>
               )}
             </div>
           ))}
           <p className="border-t px-2 pt-1.5 pb-0.5 text-[11px] text-muted-foreground">
-            ↑↓ to move · Enter or Tab to pick · Esc to close
+            {t("journal.composer.menuHelp")}
           </p>
         </div>
       )}

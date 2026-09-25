@@ -1,6 +1,7 @@
 import { useMutation } from "@apollo/client/react";
 import { Settings } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ScheduleEditor } from "#components/ScheduleEditor";
 import { Button } from "#components/ui/button";
 import {
@@ -17,6 +18,7 @@ import { DASHBOARD_STATS_QUERY, HABITS_QUERY, UPDATE_HABIT_MUTATION } from "#gra
 import type { Habit, HabitSchedule } from "#graphql/types";
 
 export function EditHabitDialog({ habit }: { habit: Habit }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(habit.name);
   const [unit, setUnit] = useState(habit.unit ?? "");
@@ -61,32 +63,32 @@ export function EditHabitDialog({ habit }: { habit: Habit }) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
-          <Settings className="size-3.5" /> Edit
+          <Settings className="size-3.5" /> {t("common.edit")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit habit</DialogTitle>
+          <DialogTitle>{t("habits.edit.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-name">Name</Label>
+            <Label htmlFor="edit-name">{t("habits.edit.name")}</Label>
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-2">
-              <Label htmlFor="edit-unit">Unit</Label>
+              <Label htmlFor="edit-unit">{t("habits.edit.unit")}</Label>
               <Input
                 id="edit-unit"
-                placeholder="e.g. glasses"
+                placeholder={t("habits.edit.unitPlaceholder")}
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-2">
-              <Label htmlFor="edit-target">Target</Label>
+              <Label htmlFor="edit-target">{t("habits.edit.target")}</Label>
               <Input
                 id="edit-target"
                 type="number"
@@ -97,7 +99,7 @@ export function EditHabitDialog({ habit }: { habit: Habit }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-start-time">Start time (for the day calendar)</Label>
+            <Label htmlFor="edit-start-time">{t("habits.edit.startTime")}</Label>
             <Input
               id="edit-start-time"
               type="time"
@@ -111,10 +113,10 @@ export function EditHabitDialog({ habit }: { habit: Habit }) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading}>
-            Save
+            {t("common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

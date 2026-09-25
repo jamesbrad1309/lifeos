@@ -1,4 +1,6 @@
+import { useTranslation } from "react-i18next";
 import type { HeatmapDay } from "#graphql/types";
+import { formatShortDate } from "#lib/dates";
 import { cn } from "#lib/utils";
 
 function cellClass(day: HeatmapDay | undefined): string {
@@ -14,6 +16,7 @@ function cellClass(day: HeatmapDay | undefined): string {
  * field), reshaped here into Sunday-aligned week columns of 7 day-rows.
  */
 export function HeatmapGrid({ days }: { days: HeatmapDay[] }) {
+  const { t } = useTranslation();
   if (days.length === 0) return null;
 
   const leadingBlanks = new Date(days[0].date).getDay();
@@ -33,7 +36,13 @@ export function HeatmapGrid({ days }: { days: HeatmapDay[] }) {
           {week.map((day, dayIdx) => (
             <div
               key={day?.date ?? `blank-${weekIdx}-${dayIdx}`}
-              title={day ? `${day.date}${day.completed ? " — done" : ""}` : undefined}
+              title={
+                day
+                  ? day.completed
+                    ? t("habits.card.doneOn", { date: formatShortDate(day.date) })
+                    : formatShortDate(day.date)
+                  : undefined
+              }
               className={cn("size-[10px] rounded-[2px]", cellClass(day))}
             />
           ))}

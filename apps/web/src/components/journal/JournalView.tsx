@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { type ComposerHandle, JournalComposer } from "#components/journal/JournalComposer";
 import { JournalEntryItem } from "#components/journal/JournalEntryItem";
 import { WeekStrip } from "#components/journal/WeekStrip";
@@ -24,13 +25,19 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+interface Props {
+  /** The day shown. It lives in the URL (`/journal?date=…`), owned by the route. */
+  date: string;
+  onDateChange: (date: string) => void;
+}
+
 /**
  * A day's journal: what you did, felt, and what happened, on one timeline.
  * Keyboard: d / f / h start an entry of that kind, ← / → move between
  * days, t jumps back to today.
  */
-export function JournalView() {
-  const [date, setDate] = useState(todayIsoDate);
+export function JournalView({ date, onDateChange }: Props) {
+  const { t } = useTranslation();
   const [kindFilter, setKindFilter] = useState<JournalEntryKind | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,10 +54,17 @@ export function JournalView() {
 
   const today = todayIsoDate();
 
-  function goTo(next: string) {
-    setDate(next > today ? today : next);
+  // A new day (from here, the week strip or the back button) starts with no
+  // entry open for editing and no tag filter.
+  const [shownDate, setShownDate] = useState(date);
+  if (date !== shownDate) {
+    setShownDate(date);
     setEditingId(null);
     setTagFilter(null);
+  }
+
+  function goTo(next: string) {
+    onDateChange(next > today ? today : next);
   }
 
   // Latest-closure ref so the keydown listener is registered once.
@@ -105,7 +119,7 @@ export function JournalView() {
           <h2 className="text-xl font-semibold">{formatDayHeading(date)}</h2>
           {date !== today && (
             <Button variant="outline" size="sm" onClick={() => goTo(today)}>
-              Back to today
+              {t("journal.view.backToToday")}
             </Button>
           )}
         </div>
@@ -116,17 +130,16 @@ export function JournalView() {
           </CardContent>
         </Card>
 
-        {loading && !data && <p className="text-muted-foreground">Loading…</p>}
+        {loading && !data && <p className="text-muted-foreground">{t("common.loading")}</p>}
         {error && <p className="text-destructive">{error.message}</p>}
 
         {!loading && entries.length === 0 && (
           <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
             <p className="font-medium text-foreground">
-              {date === today ? "How's today going?" : "Nothing written for this day."}
+              {date === today ? t("journal.view.howsToday") : t("journal.view.nothingThisDay")}
             </p>
             <p className="mt-1">
-              Start small: one thing you <b>did</b>, one thing you <b>felt</b>, one thing that{" "}
-              <b>happened</b>.
+              <Trans i18nKey="journal.view.startSmall" components={{ b: <b /> }} />
             </p>
           </div>
         )}
@@ -179,7 +192,7 @@ export function JournalView() {
       <aside className="flex flex-col gap-4 lg:sticky lg:top-0">
         <Card>
           <CardContent className="flex flex-col gap-4 p-4">
-            <p className="text-sm font-medium">This day</p>
+            <p className="text-sm font-medium">{t("journal.view.thisDay")}</p>
             <div className="grid grid-cols-3 gap-2">
               {KINDS.map((k) => (
                 <div
@@ -195,32 +208,34 @@ export function JournalView() {
                     <k.icon className="size-3.5" />
                   </span>
                   <span className="text-lg font-semibold tabular-nums">{countFor(k.kind)}</span>
-                  <span className="text-xs text-muted-foreground">{k.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t(`journal.kinds.${k.kind}.label`)}
+                  </span>
                 </div>
               ))}
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <p className="text-xs text-muted-foreground">Mood mix</p>
+              <p className="text-xs text-muted-foreground">{t("journal.view.moodMix")}</p>
               {moodTotal > 0 ? (
                 <>
                   <div
                     className="flex h-2 overflow-hidden rounded-full bg-muted"
                     role="img"
-                    aria-label={`Mood mix: ${mood.pleasant} pleasant, ${mood.neutral} neutral, ${mood.unpleasant} unpleasant`}
+                    aria-label={t("journal.view.moodMixLabel", mood)}
                   >
                     <span className="bg-emerald-500" style={{ flexGrow: mood.pleasant }} />
                     <span className="bg-zinc-400" style={{ flexGrow: mood.neutral }} />
                     <span className="bg-rose-500" style={{ flexGrow: mood.unpleasant }} />
                   </div>
                   <div className="flex justify-between text-[11px] text-muted-foreground">
-                    <span>{mood.pleasant} pleasant</span>
-                    <span>{mood.neutral} neutral</span>
-                    <span>{mood.unpleasant} unpleasant</span>
+                    <span>{t("journal.view.pleasant", { count: mood.pleasant })}</span>
+                    <span>{t("journal.view.neutral", { count: mood.neutral })}</span>
+                    <span>{t("journal.view.unpleasant", { count: mood.unpleasant })}</span>
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground">No feelings logged yet.</p>
+                <p className="text-xs text-muted-foreground">{t("journal.view.noFeelings")}</p>
               )}
             </div>
           </CardContent>
@@ -229,10 +244,10 @@ export function JournalView() {
         {entries.length > 0 && (
           <Card>
             <CardContent className="flex flex-col gap-3 p-4">
-              <p className="text-sm font-medium">Filter</p>
+              <p className="text-sm font-medium">{t("journal.view.filter")}</p>
               <div className="flex flex-wrap gap-1.5">
                 <FilterChip selected={kindFilter === null} onClick={() => setKindFilter(null)}>
-                  All {entries.length}
+                  {t("journal.view.all", { count: entries.length })}
                 </FilterChip>
                 {KINDS.map((k) => (
                   <FilterChip
@@ -240,7 +255,8 @@ export function JournalView() {
                     selected={kindFilter === k.kind}
                     onClick={() => setKindFilter(kindFilter === k.kind ? null : k.kind)}
                   >
-                    <k.icon className="size-3" /> {k.label} {countFor(k.kind)}
+                    <k.icon className="size-3" /> {t(`journal.kinds.${k.kind}.label`)}{" "}
+                    {countFor(k.kind)}
                   </FilterChip>
                 ))}
               </div>
@@ -263,24 +279,24 @@ export function JournalView() {
 
         <Card className="hidden lg:block">
           <CardContent className="flex flex-col gap-2 p-4 text-xs text-muted-foreground">
-            <p className="text-sm font-medium text-foreground">Shortcuts</p>
-            <Shortcut keys={["d", "f", "h"]}>new did / felt / happened</Shortcut>
-            <Shortcut keys={["←", "→"]}>previous / next day</Shortcut>
-            <Shortcut keys={["t"]}>jump to today</Shortcut>
-            <Shortcut keys={["⌘", "↵"]}>save the list</Shortcut>
+            <p className="text-sm font-medium text-foreground">{t("journal.view.shortcuts")}</p>
+            <Shortcut keys={["d", "f", "h"]}>{t("journal.view.shortcutNew")}</Shortcut>
+            <Shortcut keys={["←", "→"]}>{t("journal.view.shortcutDays")}</Shortcut>
+            <Shortcut keys={["t"]}>{t("journal.view.shortcutToday")}</Shortcut>
+            <Shortcut keys={["⌘", "↵"]}>{t("journal.view.shortcutSave")}</Shortcut>
           </CardContent>
         </Card>
       </aside>
 
       {lastPending && (
         <output className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">
-          Entry deleted
+          {t("journal.view.entryDeleted")}
           <button
             type="button"
             onClick={() => deletes.undo(lastPending)}
             className="font-semibold underline underline-offset-2"
           >
-            Undo
+            {t("common.undo")}
           </button>
         </output>
       )}

@@ -20,6 +20,15 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+  /* Charts (validated with the dataviz skill's palette checker against
+     --card in each mode): one series hue, and a neutral reference mark. */
+  --viz-series-1: #2a78d6;
+  --viz-reference: #52514e;
+  /* Status: a fixed scale (the same in both themes), reserved for state and
+     always shown with an icon and a label, never colour alone. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
 }
 
 .dark {
@@ -39,10 +48,17 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  --viz-series-1: #3987e5;
+  --viz-reference: #c3c2b7;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-viz-series-1: var(--viz-series-1);
+  --color-viz-reference: var(--viz-reference);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-critical: var(--status-critical);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);

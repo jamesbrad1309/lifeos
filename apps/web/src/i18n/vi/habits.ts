@@ -1,0 +1,57 @@
+import type { habits as en } from "#i18n/en/habits";
+
+export const habits: typeof en = {
+  yourHabits: "Thói quen của bạn",
+  none: "Chưa có thói quen nào. Hãy thêm thói quen đầu tiên ở trên.",
+  newPlaceholder: "Thói quen mới (vd. Đọc sách)",
+  unitPlaceholder: "đơn vị (không bắt buộc)",
+  add: "Thêm thói quen",
+  tiles: {
+    doneToday: "Đã xong hôm nay",
+    activeStreaks: "Chuỗi đang duy trì",
+    longestStreak: "Chuỗi dài nhất",
+    days: "{{count}} ngày",
+    totalXp: "Tổng XP",
+    activeHabits: "Thói quen đang theo",
+    paused: "+{{count}} tạm dừng",
+  },
+  card: {
+    streak: "Chuỗi {{count}} ngày",
+    level: "Cấp {{level}} · {{points}} điểm",
+    paused: "Tạm dừng",
+    resume: "Tiếp tục",
+    pause: "Tạm dừng",
+    confirmArchive: "Xác nhận lưu trữ",
+    doneOn: "{{date}} — đã xong",
+  },
+  edit: {
+    title: "Sửa thói quen",
+    name: "Tên",
+    unit: "Đơn vị",
+    unitPlaceholder: "vd. ly",
+    target: "Mục tiêu",
+    startTime: "Giờ bắt đầu (cho lịch trong ngày)",
+  },
+  schedule: {
+    label: "Lịch",
+    daily: "Mỗi ngày",
+    weekdays: "Ngày thường (T2–T6)",
+    weekends: "Cuối tuần (T7–CN)",
+    custom: "Chọn ngày",
+    timesPerWeek: "X lần mỗi tuần",
+    interval: "Mỗi N ngày",
+    timesPerWeekSuffix: "lần mỗi tuần",
+    every: "Mỗi",
+    days: "ngày",
+  },
+  today: {
+    schedule: "Lịch",
+    noTimed:
+      "Hôm nay không có thói quen nào có giờ cụ thể. Đặt giờ bắt đầu cho một thói quen (Sửa → Giờ bắt đầu) để hiển thị ở đây.",
+    progress: "Tiến độ hôm nay",
+    doneOf: "/ {{total}} đã xong",
+    anytime: "Bất cứ lúc nào trong ngày",
+    nothingScheduled: "Hôm nay không có lịch gì.",
+    allTimed: "Mọi việc hôm nay đều đã có giờ.",
+  },
+};

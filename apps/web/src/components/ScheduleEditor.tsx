@@ -1,10 +1,13 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "#components/ui/button";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import type { HabitSchedule } from "#graphql/types";
+import { formatWeekday } from "#lib/dates";
 import { cn } from "#lib/utils";
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** 4 January 2026 was a Sunday: day 0 of the week, like Date.getDay(). */
+const dayLabel = (day: number) => formatWeekday(new Date(2026, 0, 4 + day));
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const WEEKENDS = [0, 6];
 
@@ -31,14 +34,8 @@ function presetOf(schedule: HabitSchedule): Preset {
   }
 }
 
-const PRESET_OPTIONS: { value: Preset; label: string }[] = [
-  { value: "daily", label: "Every day" },
-  { value: "weekdays", label: "Weekdays (Mon–Fri)" },
-  { value: "weekends", label: "Weekends (Sat–Sun)" },
-  { value: "custom", label: "Custom days" },
-  { value: "timesPerWeek", label: "X times a week" },
-  { value: "interval", label: "Every N days" },
-];
+/** Labels are `habits.schedule.<preset>`. */
+const PRESETS: Preset[] = ["daily", "weekdays", "weekends", "custom", "timesPerWeek", "interval"];
 
 export function ScheduleEditor({
   value,
@@ -47,6 +44,7 @@ export function ScheduleEditor({
   value: HabitSchedule;
   onChange: (schedule: HabitSchedule) => void;
 }) {
+  const { t } = useTranslation();
   const preset = presetOf(value);
 
   function handlePresetChange(next: Preset) {
@@ -76,23 +74,24 @@ export function ScheduleEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor="schedule-preset">Schedule</Label>
+      <Label htmlFor="schedule-preset">{t("habits.schedule.label")}</Label>
       <select
         id="schedule-preset"
         className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
         value={preset}
         onChange={(e) => handlePresetChange(e.target.value as Preset)}
       >
-        {PRESET_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
+        {PRESETS.map((option) => (
+          <option key={option} value={option}>
+            {t(`habits.schedule.${option}`)}
           </option>
         ))}
       </select>
 
       {preset === "custom" && value.type === "weekly" && (
         <div className="flex gap-1">
-          {DAY_LABELS.map((label, day) => {
+          {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+            const label = dayLabel(day);
             const active = value.daysOfWeek.includes(day);
             return (
               <Button
@@ -127,13 +126,15 @@ export function ScheduleEditor({
             value={value.count}
             onChange={(e) => onChange({ type: "timesPerWeek", count: Number(e.target.value) || 1 })}
           />
-          <span className="text-sm text-muted-foreground">times per week</span>
+          <span className="text-sm text-muted-foreground">
+            {t("habits.schedule.timesPerWeekSuffix")}
+          </span>
         </div>
       )}
 
       {preset === "interval" && value.type === "interval" && (
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Every</span>
+          <span className="text-sm text-muted-foreground">{t("habits.schedule.every")}</span>
           <Input
             type="number"
             min={1}
@@ -143,7 +144,7 @@ export function ScheduleEditor({
               onChange({ type: "interval", everyNDays: Number(e.target.value) || 1 })
             }
           />
-          <span className="text-sm text-muted-foreground">days</span>
+          <span className="text-sm text-muted-foreground">{t("habits.schedule.days")}</span>
         </div>
       )}
     </div>

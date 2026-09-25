@@ -1,6 +1,7 @@
 import { useMutation } from "@apollo/client/react";
 import { Archive, Clock, Flame, Pause, Play, Star } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EditHabitDialog } from "#components/EditHabitDialog";
 import { HeatmapGrid } from "#components/HeatmapGrid";
 import { Badge } from "#components/ui/badge";
@@ -24,6 +25,7 @@ function todayIso(): string {
 }
 
 export function HabitCard({ habit }: { habit: Habit }) {
+  const { t } = useTranslation();
   const [confirmingArchive, setConfirmingArchive] = useState(false);
 
   // Any of these can change dashboardStats (points/streaks aggregate across
@@ -51,14 +53,14 @@ export function HabitCard({ habit }: { habit: Habit }) {
             {habit.currentStreak > 0 && (
               <Badge variant="warning" className="gap-1">
                 <Flame className="size-3" />
-                {habit.currentStreak}d streak
+                {t("habits.card.streak", { count: habit.currentStreak })}
               </Badge>
             )}
             <Badge variant="secondary" className="gap-1">
               <Star className="size-3" />
-              Lv {habit.level} · {habit.points} pts
+              {t("habits.card.level", { level: habit.level, points: habit.points })}
             </Badge>
-            {habit.paused && <Badge variant="outline">Paused</Badge>}
+            {habit.paused && <Badge variant="outline">{t("habits.card.paused")}</Badge>}
             {habit.startTime && (
               <Badge variant="outline" className="gap-1">
                 <Clock className="size-3" />
@@ -128,7 +130,7 @@ export function HabitCard({ habit }: { habit: Habit }) {
               size="sm"
               onClick={() => resumeHabit({ variables: { id: habit.id } })}
             >
-              <Play className="size-3.5" /> Resume
+              <Play className="size-3.5" /> {t("habits.card.resume")}
             </Button>
           ) : (
             <Button
@@ -136,25 +138,25 @@ export function HabitCard({ habit }: { habit: Habit }) {
               size="sm"
               onClick={() => pauseHabit({ variables: { id: habit.id } })}
             >
-              <Pause className="size-3.5" /> Pause
+              <Pause className="size-3.5" /> {t("habits.card.pause")}
             </Button>
           )}
           {confirmingArchive ? (
             <>
               <Button variant="ghost" size="sm" onClick={() => setConfirmingArchive(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => archiveHabit({ variables: { id: habit.id } })}
               >
-                <Archive className="size-3.5" /> Confirm archive
+                <Archive className="size-3.5" /> {t("habits.card.confirmArchive")}
               </Button>
             </>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => setConfirmingArchive(true)}>
-              <Archive className="size-3.5" /> Archive
+              <Archive className="size-3.5" /> {t("common.archive")}
             </Button>
           )}
         </div>

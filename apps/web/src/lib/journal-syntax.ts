@@ -1,5 +1,16 @@
 import type { JournalEntry, JournalEntryKind, JournalTone } from "#graphql/types";
-import { EMOTIONS, type Emotion } from "#lib/emotions";
+import { journal as en } from "#i18n/en/journal";
+import { journal as vi } from "#i18n/vi/journal";
+import { EMOTIONS, type Emotion, emotionFor } from "#lib/emotions";
+
+/** The languages the syntax is written in. Every language's words parse; this picks which to write. */
+export type SyntaxLanguage = "en" | "vi";
+const WORDS = { en, vi } as const;
+
+/** Case, accents and spacing don't matter: "/Sự-kiện", "/sukien" and "/sựkiện" are one command. */
+function fold(text: string): string {
+  return text.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").replace(/đ/g, "d").trim();
+}
 
 /**
  * The composer's plain-text format: one entry per bulleted line, starting
@@ -14,35 +25,63 @@ import { EMOTIONS, type Emotion } from "#lib/emotions";
  * with no bullet or command continues the previous item's text.
  */
 
-export interface SlashCommand {
-  word: string;
-  kind: JournalEntryKind;
-  hint: string;
+const KINDS: JournalEntryKind[] = ["ACTION", "FEELING", "EVENT"];
+
+/** The slash word for `kind` in `language`: "/action", or "/làm" in Vietnamese. */
+export function commandFor(kind: JournalEntryKind, language: SyntaxLanguage = "en"): string {
+  return WORDS[language].commands[kind];
 }
 
-export const SLASH_COMMANDS: SlashCommand[] = [
-  { word: "action", kind: "ACTION", hint: "did · walk 20m" },
-  { word: "feeling", kind: "FEELING", hint: "felt · anxious 4/5" },
-  { word: "event", kind: "EVENT", hint: "happened · (+) (-)" },
-];
-
-const WORD_FOR_KIND = Object.fromEntries(SLASH_COMMANDS.map((c) => [c.kind, c.word])) as Record<
-  JournalEntryKind,
-  string
->;
-
-/** Accepted spellings: the full word, the composer's old labels, or a first letter. */
+/**
+ * Accepted spellings, folded: each language's command, the composer's old
+ * English labels, and first letters.
+ */
 const KIND_BY_WORD: Record<string, JournalEntryKind> = {
-  action: "ACTION",
   did: "ACTION",
   a: "ACTION",
-  feeling: "FEELING",
   felt: "FEELING",
   f: "FEELING",
-  event: "EVENT",
   happened: "EVENT",
   e: "EVENT",
+  ...Object.fromEntries(
+    Object.values(WORDS).flatMap((words) =>
+      KINDS.map((kind) => [fold(words.commands[kind]).replace(/[\s-]/g, ""), kind]),
+    ),
+  ),
 };
+
+function kindForWord(word: string): JournalEntryKind | undefined {
+  return KIND_BY_WORD[fold(word).replace(/[\s-]/g, "")];
+}
+
+/**
+ * Emotion phrases in every language, folded, to the key that's stored
+ * ("lo âu" → "anxious"). Longest first, so "tràn đầy năng lượng" wins over
+ * a shorter phrase that starts the same way.
+ */
+const EMOTION_PHRASES: [string[], string][] = EMOTIONS.flatMap(({ name }) => {
+  const phrases = new Set([
+    name,
+    ...Object.values(WORDS).map((w) => w.emotions[name as keyof typeof en.emotions]),
+  ]);
+  return [...phrases].filter(Boolean).map((p): [string[], string] => [fold(p).split(/\s+/), name]);
+}).sort((a, b) => b[0].length - a[0].length);
+
+/** The emotion at the start of `text` (known phrase, else its first word) and the rest. */
+function takeEmotion(text: string): [string | null, string] {
+  const words = tidy(text).split(" ").filter(Boolean);
+  const folded = words.map((w) => fold(w.replace(/[.,;:!?]+$/, "")));
+  for (const [phrase, key] of EMOTION_PHRASES) {
+    if (phrase.every((w, i) => folded[i] === w)) return [key, words.slice(phrase.length).join(" ")];
+  }
+  const [first = "", ...others] = words;
+  return [first.replace(/[.,;:!?]+$/, "").toLowerCase() || null, others.join(" ")];
+}
+
+/** A word's name in `language`: stored keys are English, known ones get translated. */
+export function emotionName(key: string, language: SyntaxLanguage = "en"): string {
+  return WORDS[language].emotions[key as keyof typeof en.emotions] ?? key;
+}
 
 const TONE_BY_TOKEN: Record<string, JournalTone> = {
   "+": "POSITIVE",
@@ -67,9 +106,21 @@ export interface ParsedItem {
   triggerIndex: number | null;
 }
 
+/** Why a line didn't parse; the UI words it (`journal.issues.<code>`). */
+export type ParseIssueCode =
+  | "invalidTime"
+  | "actionNeedsText"
+  | "feelingNeedsEmotion"
+  | "eventNeedsText"
+  | "needsCommand"
+  | "unknownCommand"
+  | "pickCommand";
+
 export interface ParseIssue {
   line: number;
-  message: string;
+  code: ParseIssueCode;
+  /** Values for the message: the bad token, the command word that was used. */
+  params?: Record<string, string>;
 }
 
 export interface ParseResult {
@@ -110,7 +161,13 @@ function parseTime(match: RegExpExecArray): string | null {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function parseLine(kind: JournalEntryKind, rest: string, line: number, issues: ParseIssue[]) {
+function parseLine(
+  kind: JournalEntryKind,
+  word: string,
+  rest: string,
+  line: number,
+  issues: ParseIssue[],
+) {
   let text = rest;
   let time: string | null = null;
   let durationMinutes: number | null = null;
@@ -122,7 +179,7 @@ function parseLine(kind: JournalEntryKind, rest: string, line: number, issues: P
   if (timeMatch) {
     time = parseTime(timeMatch);
     if (time === null)
-      issues.push({ line, message: `"${timeMatch[0].trim()}" isn't a valid time` });
+      issues.push({ line, code: "invalidTime", params: { token: timeMatch[0].trim() } });
     text = afterTime;
   }
 
@@ -135,7 +192,8 @@ function parseLine(kind: JournalEntryKind, rest: string, line: number, issues: P
         text = after;
       }
     }
-    if (tidy(text) === "") issues.push({ line, message: "Say what you did after /action" });
+    if (tidy(text) === "")
+      issues.push({ line, code: "actionNeedsText", params: { command: word } });
   }
 
   if (kind === "FEELING") {
@@ -144,10 +202,8 @@ function parseLine(kind: JournalEntryKind, rest: string, line: number, issues: P
       intensity = Number(match[1]);
       text = after;
     }
-    const [first = "", ...others] = tidy(text).split(" ");
-    emotion = first.replace(/[.,;:!?]+$/, "").toLowerCase() || null;
-    text = others.join(" ");
-    if (!emotion) issues.push({ line, message: "Start with an emotion, e.g. /feeling anxious" });
+    [emotion, text] = takeEmotion(text);
+    if (!emotion) issues.push({ line, code: "feelingNeedsEmotion", params: { command: word } });
     intensity ??= 3;
   }
 
@@ -157,7 +213,7 @@ function parseLine(kind: JournalEntryKind, rest: string, line: number, issues: P
       tone = TONE_BY_TOKEN[match[1]];
       text = after;
     }
-    if (tidy(text) === "") issues.push({ line, message: "Say what happened after /event" });
+    if (tidy(text) === "") issues.push({ line, code: "eventNeedsText", params: { command: word } });
   }
 
   return { text: tidy(text), time, durationMinutes, emotion, intensity, tone };
@@ -180,19 +236,16 @@ export function parseJournalText(source: string): ParseResult {
       if (!bullet && previous) {
         previous.text = tidy(`${previous.text}\n${rest}`);
       } else {
-        issues.push({ line, message: "Start with /action, /feeling or /event" });
+        issues.push({ line, code: "needsCommand" });
       }
       return;
     }
 
-    const kind = KIND_BY_WORD[word.toLowerCase()];
+    const kind = kindForWord(word);
     if (!kind) {
-      issues.push({
-        line,
-        message: word
-          ? `Unknown /${word}. Use /action, /feeling or /event`
-          : "Pick /action, /feeling or /event",
-      });
+      issues.push(
+        word ? { line, code: "unknownCommand", params: { word } } : { line, code: "pickCommand" },
+      );
       return;
     }
 
@@ -203,7 +256,7 @@ export function parseJournalText(source: string): ParseResult {
       parent && kind !== "EVENT" && items[parent.index].kind === "EVENT" ? parent.index : null;
 
     stack.push({ indent, index: items.length });
-    items.push({ line, indent, kind, triggerIndex, ...parseLine(kind, rest, line, issues) });
+    items.push({ line, indent, kind, triggerIndex, ...parseLine(kind, word, rest, line, issues) });
   });
 
   return { items, issues };
@@ -215,11 +268,11 @@ function formatDurationToken(minutes: number): string {
   return `${h ? `${h}h` : ""}${m ? `${m}m` : ""}`;
 }
 
-/** One line of composer syntax for an existing entry — what "edit" opens with. */
-export function serializeEntry(entry: JournalEntry): string {
-  const parts = [`/${WORD_FOR_KIND[entry.kind]}`];
+/** One line of composer syntax for an existing entry — what "edit" opens with, in `language`. */
+export function serializeEntry(entry: JournalEntry, language: SyntaxLanguage = "en"): string {
+  const parts = [`/${commandFor(entry.kind, language)}`];
   if (entry.kind === "FEELING" && entry.emotion) {
-    parts.push(entry.emotion);
+    parts.push(emotionName(entry.emotion, language));
     if (entry.intensity) parts.push(`${entry.intensity}/5`);
   }
   if (entry.text) parts.push(entry.text);
@@ -240,42 +293,51 @@ export interface SuggestionState {
   items: Suggestion[];
 }
 
-const COMMAND_PREFIX = /^(\s*(?:[-*•]\s+)?)\/(\w*)$/;
-const EMOTION_PREFIX = /^\s*(?:[-*•]\s+)?\/(?:feeling|felt|f)\s+([\p{L}]*)$/iu;
+const COMMAND_PREFIX = /^(\s*(?:[-*•]\s+)?)\/([\p{L}-]*)$/u;
+const EMOTION_PREFIX = /^\s*(?:[-*•]\s+)?\/(\S+)\s+([\p{L} ]*)$/u;
 
 /**
  * What the slash menu should offer at `caret`: commands right after a `/`
  * at the start of an item, or emotion words right after `/feeling `.
  */
-export function suggestionsAt(value: string, caret: number): SuggestionState | null {
+export function suggestionsAt(
+  value: string,
+  caret: number,
+  language: SyntaxLanguage = "en",
+): SuggestionState | null {
   const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
   const before = value.slice(lineStart, caret);
 
   const command = COMMAND_PREFIX.exec(before);
   if (command) {
-    const query = command[2].toLowerCase();
-    const items: Suggestion[] = SLASH_COMMANDS.filter(
-      (c) =>
-        c.word.startsWith(query) ||
-        Object.entries(KIND_BY_WORD).some(([w, k]) => k === c.kind && w.startsWith(query)),
-    ).map((c) => ({
+    const query = fold(command[2]).replace(/-/g, "");
+    const items: Suggestion[] = KINDS.filter((kind) =>
+      Object.entries(KIND_BY_WORD).some(([w, k]) => k === kind && w.startsWith(query)),
+    ).map((kind) => ({
       type: "command",
-      label: c.word,
-      hint: c.hint,
-      kind: c.kind,
-      insert: `/${c.word} `,
+      label: commandFor(kind, language),
+      hint: WORDS[language].kinds[kind].hint,
+      kind,
+      insert: `/${commandFor(kind, language)} `,
     }));
     return items.length > 0 ? { from: lineStart + command[1].length, to: caret, items } : null;
   }
 
   const feeling = EMOTION_PREFIX.exec(before);
-  if (feeling) {
-    const query = feeling[1].toLowerCase();
-    const items: Suggestion[] = EMOTIONS.filter((e) => e.name.startsWith(query))
-      .filter((e) => e.name !== query)
+  if (feeling && kindForWord(feeling[1]) === "FEELING") {
+    const typed = feeling[2];
+    const query = fold(typed);
+    const items: Suggestion[] = EMOTIONS.map((e) => ({ e, label: emotionName(e.name, language) }))
+      .filter(({ e, label }) => fold(label).startsWith(query) || e.name.startsWith(query))
+      .filter(({ label }) => fold(label) !== query)
       .slice(0, 8)
-      .map((e) => ({ type: "emotion", label: e.name, emotion: e, insert: `${e.name} ` }));
-    return items.length > 0 ? { from: caret - query.length, to: caret, items } : null;
+      .map(({ e, label }) => ({
+        type: "emotion",
+        label,
+        emotion: emotionFor(e.name),
+        insert: `${label} `,
+      }));
+    return items.length > 0 ? { from: caret - typed.length, to: caret, items } : null;
   }
 
   return null;

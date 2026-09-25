@@ -1,7 +1,7 @@
 export type Valence = "pleasant" | "neutral" | "unpleasant";
 
 export interface Emotion {
-  /** Stored as-is in JournalEntry.emotion. */
+  /** Stored as-is in JournalEntry.emotion. Displayed via `journal.emotions.<name>`. */
   name: string;
   emoji: string;
   valence: Valence;
@@ -43,8 +43,6 @@ const BY_NAME = new Map(EMOTIONS.map((emotion) => [emotion.name, emotion]));
 export function emotionFor(name: string): Emotion {
   return BY_NAME.get(name) ?? { name, emoji: "💭", valence: "neutral" };
 }
-
-export const INTENSITY_LABELS = ["Faint", "Mild", "Moderate", "Strong", "Intense"] as const;
 
 /** Share of pleasant / neutral / unpleasant among `names`, for the mood-mix bar. */
 export function valenceMix(names: string[]): Record<Valence, number> {

@@ -1,6 +1,7 @@
 import { useQuery } from "@apollo/client/react";
 import { CheckCircle2, Flame, type LucideIcon, Medal, Star, Target } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "#components/ui/card";
 import { Progress } from "#components/ui/progress";
 import { DASHBOARD_STATS_QUERY, HABITS_QUERY } from "#graphql/habits";
@@ -36,6 +37,7 @@ function Tile({
 
 /** The headline numbers across the top of the dashboard. */
 export function StatTiles() {
+  const { t } = useTranslation();
   const { data: statsData } = useQuery<DashboardStatsData>(DASHBOARD_STATS_QUERY);
   const { data: habitsData } = useQuery<HabitsData>(HABITS_QUERY);
   const stats = statsData?.dashboardStats;
@@ -50,7 +52,7 @@ export function StatTiles() {
       <Tile
         icon={CheckCircle2}
         iconClass="text-emerald-500"
-        label="Done today"
+        label={t("habits.tiles.doneToday")}
         value={
           <>
             {done}
@@ -63,25 +65,25 @@ export function StatTiles() {
       <Tile
         icon={Flame}
         iconClass="text-orange-500"
-        label="Active streaks"
+        label={t("habits.tiles.activeStreaks")}
         value={stats?.activeStreakCount ?? "–"}
       />
       <Tile
         icon={Medal}
         iconClass="text-amber-500"
-        label="Longest streak"
-        value={stats ? `${stats.longestOverallStreak}d` : "–"}
+        label={t("habits.tiles.longestStreak")}
+        value={stats ? t("habits.tiles.days", { count: stats.longestOverallStreak }) : "–"}
       />
       <Tile
         icon={Star}
         iconClass="text-violet-500"
-        label="Total XP"
+        label={t("habits.tiles.totalXp")}
         value={stats?.totalPoints ?? "–"}
       />
       <Tile
         icon={Target}
         iconClass="text-sky-500"
-        label="Active habits"
+        label={t("habits.tiles.activeHabits")}
         value={
           stats ? (
             <>
@@ -89,7 +91,7 @@ export function StatTiles() {
               {stats.pausedHabits > 0 && (
                 <span className="text-base font-normal text-muted-foreground">
                   {" "}
-                  +{stats.pausedHabits} paused
+                  {t("habits.tiles.paused", { count: stats.pausedHabits })}
                 </span>
               )}
             </>

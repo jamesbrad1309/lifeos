@@ -1,22 +1,22 @@
 import { CornerDownRight, Heart, Pencil, Trash2 } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Badge } from "#components/ui/badge";
 import type { JournalEntry } from "#graphql/types";
+import { useSyntaxLanguage } from "#hooks/useSyntaxLanguage";
 import { formatDuration } from "#lib/dates";
-import { INTENSITY_LABELS, emotionFor } from "#lib/emotions";
+import { emotionFor } from "#lib/emotions";
 import { KIND_BY_ID } from "#lib/journal-kinds";
-import { cn } from "#lib/utils";
+import { emotionName } from "#lib/journal-syntax";
+import { capitalizeFirst, cn } from "#lib/utils";
 
 const TONE_BADGE = {
   POSITIVE: {
-    label: "👍 Good",
     className: "border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   },
   NEUTRAL: {
-    label: "😐 Neutral",
     className: "border-transparent bg-secondary text-secondary-foreground",
   },
   NEGATIVE: {
-    label: "👎 Rough",
     className: "border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300",
   },
 } as const;
@@ -31,6 +31,9 @@ interface Props {
 }
 
 export function JournalEntryItem({ entry, onEdit, onDelete, onLogFeeling, onTagClick }: Props) {
+  const { t } = useTranslation();
+  const language = useSyntaxLanguage();
+  const intensityLabels = t("journal.intensity", { returnObjects: true });
   const config = KIND_BY_ID[entry.kind];
   const Icon = config.icon;
   const emotion = entry.emotion ? emotionFor(entry.emotion) : null;
@@ -48,7 +51,7 @@ export function JournalEntryItem({ entry, onEdit, onDelete, onLogFeeling, onTagC
           "relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full",
           config.dotClass,
         )}
-        title={config.label}
+        title={t(`journal.kinds.${entry.kind}.label`)}
       >
         <Icon className="size-4" />
       </span>
@@ -60,18 +63,20 @@ export function JournalEntryItem({ entry, onEdit, onDelete, onLogFeeling, onTagC
           </span>
 
           {emotion && (
-            <span className="inline-flex items-center gap-1.5 text-sm font-medium capitalize">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium">
               <span aria-hidden className="text-base">
                 {emotion.emoji}
               </span>
-              {emotion.name}
+              {capitalizeFirst(emotionName(emotion.name, language))}
               {entry.intensity && (
                 <span
                   className="flex items-center gap-0.5"
-                  title={INTENSITY_LABELS[entry.intensity - 1]}
-                  aria-label={`Intensity: ${INTENSITY_LABELS[entry.intensity - 1]}`}
+                  title={intensityLabels[entry.intensity - 1]}
+                  aria-label={t("journal.intensityLabel", {
+                    label: intensityLabels[entry.intensity - 1],
+                  })}
                 >
-                  {INTENSITY_LABELS.map((label, i) => (
+                  {intensityLabels.map((label, i) => (
                     <span
                       key={label}
                       className={cn(
@@ -90,20 +95,20 @@ export function JournalEntryItem({ entry, onEdit, onDelete, onLogFeeling, onTagC
           )}
           {entry.tone && (
             <Badge className={TONE_BADGE[entry.tone].className}>
-              {TONE_BADGE[entry.tone].label}
+              {t(`journal.tones.${entry.tone}`)}
             </Badge>
           )}
 
           <div className="ml-auto flex gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
             {onLogFeeling && (
-              <IconButton label="How did it make you feel?" onClick={onLogFeeling}>
+              <IconButton label={t("journal.entry.howDidItFeel")} onClick={onLogFeeling}>
                 <Heart className="size-3.5" />
               </IconButton>
             )}
-            <IconButton label="Edit" onClick={onEdit}>
+            <IconButton label={t("common.edit")} onClick={onEdit}>
               <Pencil className="size-3.5" />
             </IconButton>
-            <IconButton label="Delete" onClick={onDelete}>
+            <IconButton label={t("common.delete")} onClick={onDelete}>
               <Trash2 className="size-3.5" />
             </IconButton>
           </div>
@@ -118,7 +123,11 @@ export function JournalEntryItem({ entry, onEdit, onDelete, onLogFeeling, onTagC
         {entry.trigger && (
           <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
             <CornerDownRight className="size-3 shrink-0" />
-            because of <span className="truncate font-medium">{entry.trigger.text}</span>
+            <Trans
+              i18nKey="journal.entry.becauseOf"
+              values={{ text: entry.trigger.text }}
+              components={{ b: <span className="truncate font-medium" /> }}
+            />
           </p>
         )}
       </div>
