@@ -3,5 +3,5 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist", "build", "node_modules"]
+  "ignorePatterns": ["dist", "build", "node_modules", "**/routeTree.gen.ts"]
 }

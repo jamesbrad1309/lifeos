@@ -12,6 +12,7 @@
     "dev:api": "pnpm --filter api dev",
     "build": "pnpm --filter './apps/*' build",
     "lint": "oxlint . && biome lint .",
+    "test": "pnpm --filter web --filter api test",
     "format": "biome format --write .",
     "check": "biome check --write .",
     "quickstart": "bash scripts/quickstart.sh"
