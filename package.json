@@ -19,7 +19,7 @@
     "lexicon:fetch": "node scripts/fetch-emotion-lexicon.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.5.14",
     "oxlint": "^0.15.0",
     "typescript": "catalog:"
   },
