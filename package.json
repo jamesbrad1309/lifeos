@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "oxlint": "^0.15.0",
+    "oxlint": "^1.86.0",
     "typescript": "catalog:"
   },
   "pnpm": {
