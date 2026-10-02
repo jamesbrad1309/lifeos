@@ -32,7 +32,7 @@
     "@graphql-tools/merge": "^9.0.0",
     "@graphql-tools/schema": "^10.0.0",
     "dataloader": "^2.2.2",
-    "dotenv": "^16.4.5",
+    "dotenv": "^18.0.4",
     "express": "^5.0.0",
     "graphql": "catalog:",
     "pino": "^10.3.1",

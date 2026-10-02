@@ -48,8 +48,8 @@ importers:
         specifier: ^7.0.3
         version: 7.0.3
       dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
+        specifier: ^18.0.4
+        version: 18.0.4
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -115,8 +115,8 @@ importers:
         specifier: ^2.2.2
         version: 2.2.3
       dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
+        specifier: ^18.0.4
+        version: 18.0.4
       express:
         specifier: ^5.0.0
         version: 5.2.1
@@ -1764,6 +1764,11 @@ packages:
   dotenv@16.6.1:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
+
+  dotenv@18.0.4:
+    resolution: {integrity: sha512-jGt9uI5BIxpVO15kvy+iEFqNAwxYClKWnkptLjSNPnFLC003Imd0ofr3aEVsbpHdSBdSsbcApNIlz4nbyGMwdA==}
+    engines: {node: '>=12'}
+    hasBin: true
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -4578,6 +4583,8 @@ snapshots:
   dotenv@16.4.5: {}
 
   dotenv@16.6.1: {}
+
+  dotenv@18.0.4: {}
 
   dunder-proto@1.0.1:
     dependencies:
